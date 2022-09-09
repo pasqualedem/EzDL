@@ -4,7 +4,7 @@ import os
 from typing import Mapping
 from easydict import EasyDict
 
-from experiment.resume import ExpLog
+from ezdl.experiment.resume import ExpLog
 from ezdl.experiment.run import Run
 from ezdl.experiment.resume import get_interrupted_run, retrieve_run_to_resume
 from ezdl.utils.grid import make_grid, linearize

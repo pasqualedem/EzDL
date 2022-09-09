@@ -5,7 +5,8 @@ from ezdl.utils.utilities import update_collection, load_yaml
 
 parser = argparse.ArgumentParser(description='Train and test models')
 parser.add_argument('action',
-                    help='Choose the action to perform: experiment, resume, resume_run, complete, preprocess, manipulate, app',
+                    help='Choose the action to perform: '
+                         'experiment, resume, resume_run, complete, preprocess, manipulate, app',
                     default="experiment", type=str)
 parser.add_argument('--resume', required=False, action='store_true',
                     help='Resume the experiment', default=False)
@@ -15,7 +16,6 @@ parser.add_argument('-f', '--file', required=False, type=str,
                     help='Set the config file', default=None)
 parser.add_argument("--grid", type=int, help="Select the first grid to start from")
 parser.add_argument("--run", type=int, help="Select the run in grid to start from")
-
 parser.add_argument("--filters", type=json.loads, help="Filters to query in the resuming mode")
 parser.add_argument('-s', "--stage", type=json.loads, help="Stages to execute in the resuming mode")
 parser.add_argument('-p', "--path", type=str, help="Path to the tracking url in the resuming mode")

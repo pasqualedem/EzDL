@@ -1,4 +1,5 @@
 import collections
+import os
 from io import StringIO
 from typing import Any, Mapping
 
@@ -175,3 +176,11 @@ def safe_execute(default, exception, function, *args):
         return function(*args)
     except exception:
         return default
+
+
+def get_name_package_from_path(path):
+    path = os.path.normpath(path)
+    splitted = path.split(os.sep)
+    package = ".".join(splitted[:-1])
+    module = splitted[-1]
+    return package, module
