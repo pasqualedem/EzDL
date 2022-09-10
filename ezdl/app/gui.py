@@ -166,7 +166,7 @@ class TrainingInterface:
                                    len(self.experimenter.grids[self.experimenter.exp_settings.start_from_grid]),
                                    "starting",
                                    {})
-        for out in self.experimenter.execute_runs(callback=self.update_progress):
+        for out in self.experimenter.execute_runs_generator(callback=self.update_progress):
             yield out
 
     def update_progress(self, cur_grid, cur_run, n_grids, n_runs, status, run_params, exception=None):

@@ -89,7 +89,7 @@ class Experimenter:
             total_runs_excl=total_runs_excl
         )
 
-    def execute_runs(self, callback=None):
+    def execute_runs_generator(self, callback=None):
         track_dir = self.exp_settings['tracking_dir']
         exp_log = ExpLog(track_dir)
         exp_log.start()
@@ -146,6 +146,10 @@ class Experimenter:
                     if callback:
                         yield callback(i, j, len(self.grids), len(grid), status="crashed", run_params={}, exception=e)
         exp_log.close()
+
+    def execute_runs(self):
+        for _ in self.execute_runs_generator():
+            pass
 
     def manage_resume(self):
         if self.exp_settings.resume:

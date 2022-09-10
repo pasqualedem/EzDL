@@ -2,11 +2,7 @@ import os
 
 import wandb
 
-from ezdl.data.sequoia import WeedMapDatasetInterface
-from ezdl.experiment.run import train, Run
-from ezdl.experiment.parameters import parse_params
-from ezdl.learning.seg_trainer import SegmentationTrainer
-from ezdl.utils.utilities import values_to_number, nested_dict_update
+from ezdl.experiment.run import Run
 
 from super_gradients.common.abstractions.abstract_logger import get_logger
 

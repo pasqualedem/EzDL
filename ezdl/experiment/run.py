@@ -1,16 +1,15 @@
 import gc
+import importlib
 import os
 
 from super_gradients.common.abstractions.abstract_logger import get_logger
 from super_gradients.training.utils.callbacks import Phase
 
 from ezdl.callbacks import WandbCallback, SegmentationVisualizationCallback
-from ezdl.data.sequoia import WeedMapDatasetInterface
 from ezdl.experiment.parameters import parse_params
 from ezdl.learning.seg_trainer import SegmentationTrainer
-from ezdl.utils.utilities import dict_to_yaml_string, values_to_number, nested_dict_update
+from ezdl.utils.utilities import dict_to_yaml_string, values_to_number, nested_dict_update, get_module_from_path
 
-import ezdl.data
 
 logger = get_logger(__name__)
 
@@ -85,7 +84,9 @@ class Run:
 
     def _get_dataset_interface(self):
         try:
-            dataset_interface = getattr(ezdl.data, self.params['dataset_interface'])
+            module = get_module_from_path(self.params['dataset_module'])
+            dataset_module = importlib.import_module(module)
+            dataset_interface = getattr(dataset_module, self.params['dataset_interface'])
         except AttributeError:
             raise AttributeError("No interface found!")
         return dataset_interface
