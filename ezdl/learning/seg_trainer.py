@@ -1,8 +1,10 @@
+import importlib
 import os
 from typing import Mapping
 
 import pandas as pd
 import wandb
+from ezdl.utils.utilities import get_module_class_from_path
 from piptools.scripts.sync import _get_installed_distributions
 
 from super_gradients.common.abstractions.abstract_logger import get_logger
@@ -31,6 +33,23 @@ class SegmentationTrainer(SgModel):
         self.train_initialized = False
         super().__init__(ckpt_root_dir=ckpt_root_dir, **kwargs)
 
+    def init_dataset(self, dataset_interface, dataset_params):
+        if isinstance(dataset_interface, str):
+            try:
+                module, dataset_interface_cls = get_module_class_from_path(dataset_interface)
+                dataset_module = importlib.import_module(module)
+                dataset_interface_cls = getattr(dataset_module, dataset_interface_cls)
+            except AttributeError:
+                raise AttributeError("No interface found!")
+            dataset_interface = dataset_interface_cls(dataset_params)
+        elif isinstance(dataset_interface, type):
+            pass
+        else:
+            raise ValueError("Dataset interface should be str or class")
+        data_loader_num_workers = dataset_params['num_workers']
+        self.connect_dataset_interface(dataset_interface, data_loader_num_workers)
+        return self.dataset_interface
+
     def init_model(self, params: Mapping, resume: bool, checkpoint_path: str = None):
         # init model
         model_params = params['model']
@@ -44,10 +63,16 @@ class SegmentationTrainer(SgModel):
             'num_classes': output_channels,
             **model_params['params']
         }
-        if model_params['name'] in MODELS_DICT.keys():
-            model = MODELS_DICT[model_params['name']](arch_params)
-        else:
-            model = model_params['name']
+        try:
+            module, model_cls = get_module_class_from_path(model_params['name'])
+            model_module = importlib.import_module(module)
+            model_cls = getattr(model_module, model_cls)
+            model = model_cls(arch_params)
+        except (AttributeError, ValueError):
+            if model_params['name'] in MODELS_DICT.keys():
+                model = MODELS_DICT[model_params['name']](arch_params)
+            else:
+                model = model_params['name']
 
         self.build_model(model, arch_params=arch_params)
         if resume and checkpoint_path is not None:

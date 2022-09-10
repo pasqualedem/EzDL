@@ -8,8 +8,7 @@ from super_gradients.training.utils.callbacks import Phase
 from ezdl.callbacks import WandbCallback, SegmentationVisualizationCallback
 from ezdl.experiment.parameters import parse_params
 from ezdl.learning.seg_trainer import SegmentationTrainer
-from ezdl.utils.utilities import dict_to_yaml_string, values_to_number, nested_dict_update, get_module_from_path
-
+from ezdl.utils.utilities import dict_to_yaml_string, values_to_number, nested_dict_update
 
 logger = get_logger(__name__)
 
@@ -38,10 +37,8 @@ class Run:
             self.seg_trainer = SegmentationTrainer(experiment_name=params['experiment']['group'],
                                                    ckpt_root_dir=params['experiment']['tracking_dir']
                                                    if params['experiment']['tracking_dir'] else 'wandb')
-            dataset_interface = self._get_dataset_interface()
-            self.dataset = dataset_interface(self.dataset_params)
-            self.seg_trainer.connect_dataset_interface(self.dataset,
-                                                       data_loader_num_workers=params['dataset']['num_workers'])
+            self.dataset = self.seg_trainer.init_dataset \
+                (params['dataset_interface'], dataset_params=self.dataset_params)
             self.seg_trainer.init_model(params, False, None)
             self.seg_trainer.init_loggers({"in_params": params}, self.train_params)
             logger.info(f"Input params: \n\n {dict_to_yaml_string(params)}")
@@ -63,11 +60,10 @@ class Run:
             self.train_params, self.test_params, self.dataset_params, self.early_stop = parse_params(self.params)
 
             self.seg_trainer = SegmentationTrainer(experiment_name=self.params['experiment']['group'],
-                                              ckpt_root_dir=self.params['experiment']['tracking_dir']
-                                              if self.params['experiment']['tracking_dir'] else 'wandb')
-            dataset_interface = self._get_dataset_interface()
-            self.dataset = dataset_interface(self.dataset_params)
-            self.seg_trainer.connect_dataset_interface(self.dataset, data_loader_num_workers=self.params['dataset']['num_workers'])
+                                                   ckpt_root_dir=self.params['experiment']['tracking_dir']
+                                                   if self.params['experiment']['tracking_dir'] else 'wandb')
+            self.dataset = self.seg_trainer.init_dataset \
+                (wandb_run.config['in_params']['dataset_interface'], dataset_params=self.dataset_params)
             track_dir = wandb_run.config.get('in_params').get('experiment').get('tracking_dir') or 'wandb'
             checkpoint_path_group = os.path.join(track_dir, wandb_run.group, 'wandb')
             run_folder = list(filter(lambda x: str(wandb_run.id) in x, os.listdir(checkpoint_path_group)))
@@ -81,15 +77,6 @@ class Run:
             if self.seg_trainer is not None:
                 self.seg_trainer.sg_logger.close(really=True)
             raise e
-
-    def _get_dataset_interface(self):
-        try:
-            module = get_module_from_path(self.params['dataset_module'])
-            dataset_module = importlib.import_module(module)
-            dataset_interface = getattr(dataset_module, self.params['dataset_interface'])
-        except AttributeError:
-            raise AttributeError("No interface found!")
-        return dataset_interface
 
     def launch(self):
         try:

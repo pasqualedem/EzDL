@@ -178,10 +178,9 @@ def safe_execute(default, exception, function, *args):
         return default
 
 
-def get_module_from_path(path):
+def get_module_class_from_path(path):
     path = os.path.normpath(path)
     splitted = path.split(os.sep)
-    package = ".".join(splitted[:-1])
-    module = splitted[-1]
-    module = module.split(".")[0]
-    return f"{package}.{module}"
+    module = ".".join(splitted[:-1])
+    cls = splitted[-1]
+    return module, cls
