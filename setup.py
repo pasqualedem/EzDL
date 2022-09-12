@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="ezdl",
-    version="0.0.1",
+    version="0.0.2",
     author="Pasquale De Marinis",
     author_email="pas.demarinis@gmail.com",
     url="https://github.com/pasqualedem/EzDL",
@@ -19,6 +19,7 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],                                      # Information to filter the project on PyPi website
     python_requires='>=3.7',                # Minimum version requirement of the package
+    scripts=['ezdl/ezdl.py'],
     install_requires=[
         "matplotlib",
         "numpy",

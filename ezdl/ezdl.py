@@ -1,4 +1,4 @@
-from ezdl.cli import cli
+from ..ezdl.cli import cli
 
 
 if __name__ == '__main__':
