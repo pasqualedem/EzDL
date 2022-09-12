@@ -10,7 +10,7 @@ from piptools.scripts.sync import _get_installed_distributions
 from super_gradients.common.abstractions.abstract_logger import get_logger
 from super_gradients.common.sg_loggers import SG_LOGGERS, BaseSGLogger
 from super_gradients.common.sg_loggers.abstract_sg_logger import AbstractSGLogger
-from super_gradients.training import Trainer
+from super_gradients.training import SgModel, StrictLoad
 from super_gradients.training.params import TrainingParams
 from super_gradients.training.utils.callbacks import Phase, PhaseContext, CallbackHandler
 from super_gradients.training import utils as core_utils
@@ -27,7 +27,7 @@ from ezdl.learning.wandb_logger import BaseSGLogger as BaseLogger
 logger = get_logger(__name__)
 
 
-class SegmentationTrainer(Trainer):
+class SegmentationTrainer(SgModel):
     def __init__(self, ckpt_root_dir=None, **kwargs):
         self.run_id = None
         self.train_initialized = False

@@ -27,7 +27,7 @@ setuptools.setup(
         "Pillow",
         "ruamel.yaml",
         "scipy",
-        "super-gradients",
+        "super-gradients==2.2.0",
         "torch",
         "torchaudio",
         "torchmetrics",
