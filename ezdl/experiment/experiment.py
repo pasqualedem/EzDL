@@ -63,8 +63,9 @@ class Experimenter:
 
         self.grids, dot_elements = zip(*[make_grid(grid, return_cartesian_elements=True) for grid in complete_grids])
         dot_elements = list(dot_elements)
-        dot_elements[1:] = [list(dict(linearize(others) + dot).items()) for others, dot in
-                            zip(other_grids, dot_elements[1:])]
+        if len(dot_elements) > 1:
+            dot_elements[1:] = [list(dict(linearize(others) + dot).items()) for others, dot in
+                                zip(other_grids, dot_elements[1:])]
 
         # Modify starting grid and run to manage the resume
         self.manage_resume()
