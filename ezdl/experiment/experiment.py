@@ -76,6 +76,9 @@ class Experimenter:
                 info += f', skipping grid {i} with {len(grid)} runs'
             logger.info(info)
         self.generate_grid_summary()
+
+        if self.exp_settings.excluded_files:
+            os.environ['WANDB_IGNORE_GLOBS'] = self.exp_settings.excluded_files
         return self.gs, self.grids, dot_elements
 
     def generate_grid_summary(self):
@@ -94,7 +97,7 @@ class Experimenter:
         track_dir = self.exp_settings['tracking_dir']
         exp_log = ExpLog(track_dir)
         exp_log.start()
-        starting_run = self.exp_settings.start_from_grid
+        starting_run = self.exp_settings.start_from_run
         if self.exp_settings.resume_last:
             logger.info("+ another run to finish!")
             grid_len = len(self.grids[self.exp_settings.start_from_grid])
@@ -171,13 +174,6 @@ class Experimenter:
 
 
 def experiment(settings: Mapping, param_path: str = "local variable"):
-    exp = Experimenter()
-    exp.calculate_runs(settings)
-    exp_settings = exp.exp_settings
-
-    if exp_settings.excluded_files:
-        os.environ['WANDB_IGNORE_GLOBS'] = exp_settings.excluded_files
-
     logger.info(f'Loaded parameters from {param_path}')
 
     experimenter = Experimenter()
