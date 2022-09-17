@@ -19,7 +19,7 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],                                      # Information to filter the project on PyPi website
     python_requires='>=3.7',                # Minimum version requirement of the package
-    scripts=['ezdl/ezdl.py'],
+    # scripts=['ezdl/ezdl.py'],
     install_requires=[
         "matplotlib",
         "numpy",
