@@ -14,8 +14,8 @@ parser.add_argument('-d', '--dir', required=False, type=str,
                     help='Set the local tracking directory', default=None)
 parser.add_argument('-f', '--file', required=False, type=str,
                     help='Set the config file', default=None)
-parser.add_argument("--grid", type=int, help="Select the first grid to start from")
-parser.add_argument("--run", type=int, help="Select the run in grid to start from")
+parser.add_argument("--grid", type=int, help="Select the first grid to start from", default=None)
+parser.add_argument("--run", type=int, help="Select the run in grid to start from", default=None)
 parser.add_argument("--filters", type=json.loads, help="Filters to query in the resuming mode")
 parser.add_argument('-s', "--stage", type=json.loads, help="Stages to execute in the resuming mode")
 parser.add_argument('-p', "--path", type=str, help="Path to the tracking url in the resuming mode")
@@ -59,7 +59,13 @@ def cli():
         manipulate()
     elif action in ['app', 'webapp', 'frontend']:
         from ezdl.app import frontend
-        frontend()
+        exp_settings = dict(
+            start_from_grid=args.grid,
+            start_from_run=args.run,
+            resume=args.resume,
+            tracking_dir=args.dir
+        )
+        frontend(args.file, exp_settings)
     else:
         raise ValueError("Action not recognized")
 

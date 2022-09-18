@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import copy
 import gc
 import os
@@ -41,7 +43,21 @@ class ExpSettings(EasyDict):
         self.resume_last = False
         self.tracking_dir = ""
         self.excluded_files = ""
+        self.group = ""
+        self.continue_with_errors = True
         super().__init__(*args, **kwargs)
+
+    def update(self, e: ExpSettings, **f):
+        if e is None:
+            return
+        self.start_from_grid = e.start_from_grid or self.start_from_grid
+        self.start_from_run = e.start_from_run or self.start_from_run
+        self.resume = e.resume or self.resume
+        self.resume_last = e.resume_last or self.resume_last
+        self.tracking_dir = e.tracking_dir or self.tracking_dir
+        self.excluded_files = e.excluded_files or self.excluded_files
+        self.group = e.group or self.group
+        self.continue_with_errors = not e.continue_with_errors or self.continue_with_errors
 
 
 class Experimenter:
