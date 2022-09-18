@@ -33,7 +33,7 @@ def DEFAULTS(key=None):
         return ""
 
 
-TITLE = "# Weed Mapping"
+TITLE = "# EzDL"
 TEXT = "Load config and model to select image channels"
 DIV = "---"
 COLS = ['Grid', 'N. runs']
@@ -48,10 +48,10 @@ class Interface:
     def __init__(self):
         with gr.Blocks() as demo:
             gr.Markdown(TITLE)
-            with gr.Tab("Inference"):
-                InferenceInterface()
             with gr.Tab("Training"):
                 TrainingInterface()
+            with gr.Tab("Inference"):
+                InferenceInterface()
 
         demo.queue()
         demo.launch()

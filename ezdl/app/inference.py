@@ -8,7 +8,6 @@ from super_gradients.training import utils as core_utils
 from torchvision.transforms import functional as F
 import torchvision.transforms as transforms
 
-from ezdl.data.sequoia import WeedMapDatasetInterface
 from ezdl.utils.utilities import load_yaml
 
 from ezdl.models import MODELS as MODELS_DICT
@@ -73,13 +72,14 @@ class WandbInferencer(Inferencer):
         super().__init__(name=config['model']['name'], path=path_wrapper.name, params=params, gpu=gpu)
         self.compose_preprocess(config)
 
-    def compose_preprocess(self, config):
-        means, stds = WeedMapDatasetInterface.get_mean_std(
-            config["dataset"]["train_folders"],
-            config["dataset"]["channels"],
-            os.path.basename(config["dataset"]["root"].lower()))
-        self.channels = config["dataset"]["channels"]
-        self.preprocess = transforms.Normalize(means, stds)
+    def compose_preprocess(self, config):  # TO DO
+        pass
+        # means, stds = WeedMapDatasetInterface.get_mean_std(
+        #     config["dataset"]["train_folders"],
+        #     config["dataset"]["channels"],
+        #     os.path.basename(config["dataset"]["root"].lower()))
+        # self.channels = config["dataset"]["channels"]
+        # self.preprocess = transforms.Normalize(means, stds)
 
 
 def compose_images(images: list):

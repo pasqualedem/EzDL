@@ -2,7 +2,7 @@
 ## Installation
 Recommended to create a Python virtual environment
 
-    pip install 
+    pip install ezdl
 
 ## Usage
 
@@ -29,4 +29,3 @@ Recommended to create a Python virtual environment
 		  
 ### Parameter file
 YAML file that contains all parameters necessary to the exepriment to be run.
-Some examples can be found in the `params` folder.
