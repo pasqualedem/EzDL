@@ -4,13 +4,16 @@ from typing import Mapping
 
 import pandas as pd
 import wandb
+from super_gradients.common import MultiGPUMode
+
 from ezdl.utils.utilities import get_module_class_from_path
 from piptools.scripts.sync import _get_installed_distributions
 
 from super_gradients.common.abstractions.abstract_logger import get_logger
 from super_gradients.common.sg_loggers import SG_LOGGERS, BaseSGLogger
 from super_gradients.common.sg_loggers.abstract_sg_logger import AbstractSGLogger
-from super_gradients.training import SgModel, StrictLoad
+from super_gradients.training import StrictLoad, Trainer
+
 from super_gradients.training.params import TrainingParams
 from super_gradients.training.utils.callbacks import Phase, PhaseContext, CallbackHandler
 from super_gradients.training import utils as core_utils
@@ -27,7 +30,7 @@ from ezdl.learning.wandb_logger import BaseSGLogger as BaseLogger
 logger = get_logger(__name__)
 
 
-class SegmentationTrainer(SgModel):
+class SegmentationTrainer(Trainer):
     def __init__(self, ckpt_root_dir=None, **kwargs):
         self.run_id = None
         self.train_initialized = False
@@ -49,6 +52,15 @@ class SegmentationTrainer(SgModel):
         data_loader_num_workers = dataset_params['num_workers']
         self.connect_dataset_interface(dataset_interface, data_loader_num_workers)
         return self.dataset_interface
+
+    def connect_dataset_interface(self, dataset_interface, data_loader_num_workers):
+        self.dataset_interface = dataset_interface
+        self.train_loader, self.valid_loader, self.test_loader, self.classes = \
+            self.dataset_interface.get_data_loaders(batch_size_factor=self.num_devices,
+                                                    num_workers=data_loader_num_workers,
+                                                    distributed_sampler=self.multi_gpu == MultiGPUMode.DISTRIBUTED_DATA_PARALLEL)
+
+        self.dataset_params = self.dataset_interface.get_dataset_params()
 
     def init_model(self, params: Mapping, resume: bool, checkpoint_path: str = None):
         # init model
