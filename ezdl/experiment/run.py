@@ -1,5 +1,5 @@
 import gc
-import importlib
+import sys
 import os
 
 from super_gradients.common.abstractions.abstract_logger import get_logger
@@ -24,6 +24,8 @@ class Run:
         self.test_params = None
         self.run_params = None
         self.phases = None
+        if '.' not in sys.path:
+            sys.path.extend('.')
 
     def init(self, params: dict):
         self.seg_trainer = None
