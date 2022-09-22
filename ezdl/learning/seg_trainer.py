@@ -17,6 +17,7 @@ from super_gradients.training import StrictLoad, Trainer
 from super_gradients.training.params import TrainingParams
 from super_gradients.training.utils.callbacks import Phase, PhaseContext, CallbackHandler
 from super_gradients.training import utils as core_utils
+from super_gradients.training import models
 
 import torch
 from super_gradients.training.utils.checkpoint_utils import load_checkpoint_to_model
@@ -31,9 +32,10 @@ logger = get_logger(__name__)
 
 
 class SegmentationTrainer(Trainer):
-    def __init__(self, ckpt_root_dir=None, **kwargs):
+    def __init__(self, ckpt_root_dir=None, model_checkpoints_location: str = 'local', **kwargs):
         self.run_id = None
         self.train_initialized = False
+        self.model_checkpoints_location = model_checkpoints_location
         super().__init__(ckpt_root_dir=ckpt_root_dir, **kwargs)
 
     def init_dataset(self, dataset_interface, dataset_params):
@@ -84,9 +86,21 @@ class SegmentationTrainer(Trainer):
             if model_params['name'] in MODELS_DICT.keys():
                 model = MODELS_DICT[model_params['name']](arch_params)
             else:
-                model = model_params['name']
+                model = models.get(model_name=model_params['name'], arch_params=arch_params)
 
-        self.build_model(model, arch_params=arch_params)
+        if 'num_classes' not in arch_params.keys():
+            if self.classes is None and self.dataset_interface is None:
+                raise Exception('Error', 'Number of classes not defined in arch params and dataset is not defined')
+            else:
+                arch_params['num_classes'] = len(self.classes)
+
+        self.arch_params = core_utils.HpmStruct(**arch_params)
+        self.net = model
+
+        self._net_to_device()
+        # SET THE FLAG FOR DIFFERENT PARAMETER GROUP OPTIMIZER UPDATE
+        self.update_param_groups = hasattr(self.net.module, 'update_param_groups')
+
         if resume and checkpoint_path is not None:
             self.checkpoint = load_checkpoint_to_model(ckpt_local_path=checkpoint_path,
                                                        load_backbone=False,
@@ -105,7 +119,10 @@ class SegmentationTrainer(Trainer):
             self.start_epoch = self.checkpoint['epoch'] if 'epoch' in self.checkpoint.keys() else 0
 
     def train(self, training_params: dict = dict()):
-        super().train(training_params)
+        super().train(model=self.net,
+                      training_params=training_params,
+                      train_loader=self.train_loader,
+                      valid_loader=self.valid_loader)
         if self.train_loader.num_workers > 0:
             self.train_loader._iterator._shutdown_workers()
             self.valid_loader._iterator._shutdown_workers()
@@ -148,9 +165,15 @@ class SegmentationTrainer(Trainer):
                                               num_classes=self.dataset_interface.trainset.CLASS_LABELS,
                                               undo_preprocessing=self.dataset_interface.undo_preprocess)
         ]
-        metrics_values = super().test(test_loader, loss, silent_mode, list(test_metrics.values()),
-                                      loss_logging_items_names,
-                                      metrics_progress_verbose, test_phase_callbacks, use_ema_net)
+        metrics_values = super().test(model=self.net,
+                                      test_loader=test_loader,
+                                      loss=loss,
+                                      silent_mode=silent_mode,
+                                      test_metrics_list=list(test_metrics.values()),
+                                      loss_logging_items_names=loss_logging_items_names,
+                                      metrics_progress_verbose=metrics_progress_verbose,
+                                      test_phase_callbacks=test_phase_callbacks,
+                                      use_ema_net=use_ema_net)
 
         metric_names = test_metrics.keys()
 
@@ -194,6 +217,14 @@ class SegmentationTrainer(Trainer):
             logger.info('ROC curve computed.')
             wandb.log({"roc": plt})
         return metrics
+
+    def _init_monitored_items(self):
+        if self.metric_to_watch == 'loss':
+            if len(self.loss_logging_items_names) == 1:
+                self.metric_to_watch = self.loss_logging_items_names[0]
+            else:
+                raise ValueError(f"Specify which loss {self.loss_logging_items_names} to watch")
+        return super()._init_monitored_items()
 
     def _initialize_sg_logger_objects(self):
         if not self.train_initialized:

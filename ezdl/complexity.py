@@ -71,7 +71,7 @@ if __name__ == '__main__':
         #
         # ('lawin', 1, {'backbone': 'MiT-B1'}),
         # ('lawin', 2, {'backbone': 'MiT-B1'}),
-        ('lawin', 3, {'backbone': 'MiT-B1'}),
+        # ('lawin', 3, {'backbone': 'MiT-B1'}),
         # ('lawin', 4, {'backbone': 'MiT-B1'}),
         #
         # ('laweed', 1, {'backbone_pretrained': True}),
@@ -104,12 +104,13 @@ if __name__ == '__main__':
         # ('segnet', 2, {}),
         # ('segnet', 3, {}),
         # ('segnet', 4, {}),
-        ('resnet', 3, {"model_name": "50"}),
+        # ('resnet', 3, {"model_name": "50"}),
+        ('deeplabv3_resnet50', 3, {})
     ]
     per_layer_stats = False
     verbose = False
-    batch_size = 32
-    wh = (512, 512)
+    batch_size = 8
+    wh = (256, 256)
     for model, channels, args in models:
         with torch.cuda.device(0):
             size = (channels, ) + wh
