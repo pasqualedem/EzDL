@@ -1,0 +1,69 @@
+experiment:
+  name: Classification # name of the Wandb experiment
+  group: FirstGroup
+  continue_with_errors: False
+  start_from_grid: 0
+  start_from_run: 0
+  tracking_dir: './examplesExp'
+  entity: null
+  excluded_files: ".pth"
+
+parameters:
+  # Contains the parameters to build the grid.
+  # Each value should be a dict or a list
+  tags: [[mytag1, mytag2]] # list of tags to attach to the run in Wandb
+  phases: [[train, test]] # list of phases
+  dataset_interface: [examples/cifar10/Cifar10] # Path to the dataset interface class
+
+  train_params:
+    loss:
+      name: [cross_entropy] # class loss name
+      params: [{}]
+    seed: [42] # random seed to set
+    max_epochs: [ 5, 10 ]
+    initial_lr: [ 0.0001 ]
+    optimizer: [ Adam ]
+    # ema: True
+    zero_weight_decay_on_bias_and_bn: [ True ]
+    average_best_models: [ False ]
+    greater_metric_to_watch_is_better: [ False ]
+    metric_to_watch: [ loss ]
+    freeze_pretrained: [ False ]
+
+  early_stopping:
+    enabled: [False] # tells if to enable the early stopping (True, False)
+
+  train_metrics:
+    f1:
+      average: [macro]
+      num_classes: [10]
+      mdmc_average: [global]
+  test_metrics:
+    f1:
+      num_classes: [10]
+      average: [macro]
+      mdmc_average: [global]
+    precision:
+      average: [macro]
+      num_classes: [10]
+      mdmc_average: [global]
+    recall:
+      average: [macro]
+      num_classes: [10]
+      mdmc_average: [global]
+
+  model:
+    name: [resnet18]
+    params:
+      pretrained_weights: [imagenet]
+      num_classes: [10]
+
+  dataset:
+    trainset: [{}]
+    testset: [{}]
+    trainloader:
+      batch_size: [8]
+    testloader:
+      batch_size: [8]
+
+other_grids:

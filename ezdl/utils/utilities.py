@@ -184,3 +184,12 @@ def get_module_class_from_path(path):
     module = ".".join(splitted[:-1])
     cls = splitted[-1]
     return module, cls
+
+
+def recursive_get(dictionary, *keys):
+    if len(keys) == 1:
+        return dictionary.get(keys[0])
+    else:
+        if dictionary.get(keys[0]):
+            return recursive_get(dictionary, keys[1:])
+

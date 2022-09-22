@@ -17,7 +17,7 @@ def linearize(dictionary: Mapping):
         elif isinstance(value, list):
             exps.append((key, value))
         else:
-            raise ValueError("Only dict or lists!!!")
+            raise ValueError(f"Only dict or lists!!! -> {value} is {type(value)} for key {key}")
     return exps
 
 
@@ -72,6 +72,8 @@ def make_grid(dict_of_list, return_cartesian_elements=False):
     linearized_dict = linearize(dict_of_list)
     # Compute the grid
     keys, values = zip(*linearized_dict)
+    if any(map(lambda x: len(x) == 0, values)):
+        raise ValueError("There shouldn't be empty lists in grid!!")
     grid_dict = list(dict(zip(keys, values_list)) for values_list in product(*values))
     # Delinearize the list of dicts
     grid = [delinearize(dictionary) for dictionary in grid_dict]

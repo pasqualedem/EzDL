@@ -6,6 +6,7 @@ from super_gradients.training.utils.early_stopping import EarlyStop
 from ezdl.learning.wandb_logger import WandBSGLogger
 from ezdl.loss import LOSSES as LOSSES_DICT
 from ezdl.metrics import metrics_factory
+from ezdl.utils.utilities import recursive_get
 
 
 def parse_params(params: dict) -> (dict, dict, dict, list):
@@ -27,7 +28,7 @@ def parse_params(params: dict) -> (dict, dict, dict, list):
 
     if input_train_params.get('metric_to_watch') == 'loss':
         input_train_params['metric_to_watch'] = loss.__class__.__name__
-    if params.get('early_stopping').get('params').get('monitor') == 'loss':
+    if recursive_get(params, 'early_stopping', 'params', 'monitor') == 'loss':
         params['early_stopping']['params']['monitor'] = loss.__class__.__name__
     train_params = {
         **input_train_params,

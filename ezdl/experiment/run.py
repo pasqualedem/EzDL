@@ -44,7 +44,8 @@ class Run:
             logger.info(f"Input params: \n\n {dict_to_yaml_string(params)}")
         except Exception as e:
             if self.seg_trainer is not None:
-                self.seg_trainer.sg_logger.close(True)
+                if self.seg_trainer.sg_logger is not None:
+                    self.seg_trainer.sg_logger.close(True)
             raise e
 
     def resume(self, wandb_run, updated_config, phases):
