@@ -38,7 +38,7 @@ It must have 3 top keys:
 
 ```yaml
 experiment:
-# It contains all the about the grids and the group of runs:
+  # It contains all the about the grids and the group of runs:
   name: exp-name # name of the Wandb experiment
   group: exp-group # name of group of experiments for Wandb
   continue_with_errors: True # continue with other runs even if a run fails
@@ -49,8 +49,8 @@ experiment:
   excluded_files: null # glob of files to not upload to Wandb
 
 parameters:
-  #Contains the parameters to build the grid.
-  #Each value should be a dict or a list
+  # Contains the parameters to build the grid.
+  # Each value should be a dict or a list
   tags: [[mytag1, mytag2]] # list of tags to attach to the run in Wandb
   phases: [[train, test]] # list of phases
   dataset_interface: [package/module/InterfaceClass] # Path to the dataset interface class
@@ -72,8 +72,11 @@ parameters:
       mode: [min] # min or max
   
   train_metrics: 
-    # list of metrics to load from PyTorch metrics where the values are their parameters
-  
+    # list of metrics to load from PyTorch metrics 
+    # where the values are their parameters used for training
+  test_metrics: 
+    # list of metrics to load from PyTorch metrics 
+    # where the values are their parameters used for validation and test
   
   model:
     name: [package/module/MyModel] # path to model class or model name contained in EzDL or super-gradients
@@ -82,8 +85,8 @@ parameters:
   dataset: # parameters depending on the class you defined for the dataset
   
 other grids:
-# List of supplementary grids (can be empty) in which the parameters defined will override the first grid.
-# For example
+  # List of supplementary grids (can be empty) in which the parameters defined will override the first grid.
+  # For example
   - 
     train_params:
       loss:
