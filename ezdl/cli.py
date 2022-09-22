@@ -14,6 +14,8 @@ parser.add_argument('-d', '--dir', required=False, type=str,
                     help='Set the local tracking directory', default=None)
 parser.add_argument('-f', '--file', required=False, type=str,
                     help='Set the config file', default=None)
+parser.add_argument('--share', required=False, action='store_true',
+                    help='Tells if share gradio app', default=False)
 parser.add_argument("--grid", type=int, help="Select the first grid to start from", default=None)
 parser.add_argument("--run", type=int, help="Select the run in grid to start from", default=None)
 parser.add_argument("--filters", type=json.loads, help="Filters to query in the resuming mode")
@@ -65,7 +67,7 @@ def cli():
             resume=args.resume,
             tracking_dir=args.dir
         )
-        frontend(args.file, exp_settings)
+        frontend(args.file, exp_settings, args.share)
     else:
         raise ValueError("Action not recognized")
 

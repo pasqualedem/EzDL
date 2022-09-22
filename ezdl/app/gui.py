@@ -56,7 +56,7 @@ def flag_maker(exp_setings: ExpSettings):
 
 
 class Interface:
-    def __init__(self, parameter_file: str = None, exp_settings: ExpSettings = None):
+    def __init__(self, parameter_file: str = None, exp_settings: ExpSettings = None, share: bool = False):
         with gr.Blocks() as demo:
             gr.Markdown(TITLE)
             with gr.Tab("Training"):
@@ -65,7 +65,7 @@ class Interface:
                 InferenceInterface()
 
         demo.queue()
-        demo.launch()
+        demo.launch(share=share)
 
 
 class InferenceInterface:
@@ -246,6 +246,6 @@ class TrainingInterface:
         return title_builder(self.experimenter.exp_settings['group']) or "", exp_summary_builder(self.experimenter)
 
 
-def frontend(parameter_file, args):
+def frontend(parameter_file, args, share):
     settings = ExpSettings(**args)
-    Interface(parameter_file, settings)
+    Interface(parameter_file, settings, share)
