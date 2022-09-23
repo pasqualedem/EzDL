@@ -111,7 +111,8 @@ class Experimenter:
 
     def execute_runs_generator(self, callback=None):
         track_dir = self.exp_settings['tracking_dir']
-        os.makedirs(track_dir, exist_ok=True)
+        if track_dir:
+            os.makedirs(track_dir, exist_ok=True)
         exp_log = ExpLog(track_dir)
         exp_log.start()
         starting_run = self.exp_settings.start_from_run

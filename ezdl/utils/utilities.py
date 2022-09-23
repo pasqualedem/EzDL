@@ -187,9 +187,15 @@ def get_module_class_from_path(path):
 
 
 def recursive_get(dictionary, *keys):
+    """
+    Get a value from nested dicts passing the keys
+    :param dictionary: The nested dicts
+    :param keys: sequence of keys
+    :return: the value
+    """
     if len(keys) == 1:
         return dictionary.get(keys[0])
     else:
         if dictionary.get(keys[0]):
-            return recursive_get(dictionary, keys[1:])
+            return recursive_get(dictionary[keys[0]], *keys[1:])
 
