@@ -43,6 +43,7 @@ class ExpSettings(EasyDict):
         self.resume_last = False
         self.tracking_dir = ""
         self.excluded_files = ""
+        self.name = ""
         self.group = ""
         self.continue_with_errors = True
         super().__init__(*args, **kwargs)
@@ -113,8 +114,7 @@ class Experimenter:
         track_dir = self.exp_settings['tracking_dir']
         if track_dir:
             os.makedirs(track_dir, exist_ok=True)
-        exp_log = ExpLog(track_dir)
-        exp_log.start()
+        exp_log = ExpLog(track_dir, self.exp_settings.name, self.exp_settings.group)
         starting_run = self.exp_settings.start_from_run
         if self.exp_settings.resume_last:
             logger.info("+ another run to finish!")
@@ -132,10 +132,10 @@ class Experimenter:
                 logger.info(f'Running run {sr - 1} out of {grid_len} '
                             f'({sum([len(self.grids[k]) for k in range(sg)]) + sr} / {self.gs.total_runs - 1})')
                 run.launch()
-                exp_log.finish_run()
+                exp_log.finish_run(sg, sr)
             except Exception as e:
                 logger.error(f'Experiment {sg} failed with error {e}')
-                exp_log.crash_run()
+                exp_log.finish_run(sg, sr, crashed=True)
                 if not self.exp_settings.continue_with_errors:
                     raise e
                 if callback:
@@ -156,18 +156,17 @@ class Experimenter:
                     run = Run()
                     run.init({'experiment': {**self.exp_settings}, **params})
                     run.launch()
-                    exp_log.finish_run()
+                    exp_log.finish_run(i, j)
                     gc.collect()
                     if callback:
                         yield callback(i, j, len(self.grids), len(grid), status="finished", run_params={})
                 except Exception as e:
                     logger.error(f'Experiment {i} failed with error {e}')
-                    exp_log.crash_run()
+                    exp_log.finish_run(i, j, crashed=True)
                     if not self.exp_settings.continue_with_errors:
                         raise e
                     if callback:
                         yield callback(i, j, len(self.grids), len(grid), status="crashed", run_params={}, exception=e)
-        exp_log.close()
 
     def execute_runs(self):
         for _ in self.execute_runs_generator():
