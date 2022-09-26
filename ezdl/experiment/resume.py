@@ -152,10 +152,8 @@ class ExpLog:
             (self.exp_log.path == self.wandb_path) &
             (self.exp_log.group == self.group)
         ]
-        last_run = cur_exp_dataframe[
-            (cur_exp_dataframe.grid == cur_exp_dataframe.grid.max()) &
-            (cur_exp_dataframe.run == cur_exp_dataframe.run.max()
-             )]
+        last_run = cur_exp_dataframe[(cur_exp_dataframe.grid == cur_exp_dataframe.grid.max())].reset_index(drop=True)
+        last_run = last_run[(last_run.run == last_run.run.max())]
         if len(last_run) > 1:
             raise Exception("More than one last run")
         elif len(last_run) == 0:

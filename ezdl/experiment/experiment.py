@@ -119,8 +119,9 @@ class Experimenter:
         if self.exp_settings.resume_last:
             logger.info("+ another run to finish!")
             grid_len = len(self.grids[self.exp_settings.start_from_grid])
-            sg = self.exp_settings.start_from_grid
-            sr = self.exp_settings.start_from_run - 1
+            grid_list = [(i, j) for i in range(len(self.grids)) for j in range(len(self.grids[i]))]
+            index = grid_list.index((self.exp_settings.start_from_grid, self.exp_settings.start_from_run))
+            sg, sr = grid_list[index - 1]
             try:
                 exp_log.insert_run(sg, sr)
                 run = get_interrupted_run(self.exp_settings)
