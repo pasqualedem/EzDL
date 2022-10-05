@@ -160,7 +160,7 @@ class ExpLog:
             logger.warning("This experiment is never started, no runs to resume")
             return 0, 0, True
         last_run = last_run.reset_index(drop=True).loc[0]  # Get the Series
-        return last_run.grid, last_run.run, not np.isnan(last_run.finished) and not last_run.crashed
+        return last_run.grid, last_run.run, not pd.isnull(last_run.finished) and not last_run.crashed
 
     def save(self):
         self.exp_log.to_csv(self.path, index=False)
