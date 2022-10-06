@@ -65,6 +65,8 @@ def retrieve_run_to_resume(settings, grids):
     dir = settings['tracking_dir']
     exp_log = ExpLog(track_dir=dir, wandb_path=settings['name'], group=settings['group'])
     i, j, finished = exp_log.get_last_run()
+    if i is None:
+        return 0, 0, False
     index = grid_list.index((i, j))
     try:
         start_grid, start_run = grid_list[index + 1]  # Skip interrupted run
@@ -158,7 +160,7 @@ class ExpLog:
             raise Exception("More than one last run")
         elif len(last_run) == 0:
             logger.warning("This experiment is never started, no runs to resume")
-            return 0, 0, True
+            return None, None, False
         last_run = last_run.reset_index(drop=True).loc[0]  # Get the Series
         return last_run.grid, last_run.run, not np.isnan(last_run.finished) and not last_run.crashed
 

@@ -45,5 +45,5 @@ class MkFailures:
         return self.value
 
     def update(self, cur_grid, cur_run, exception):
-        self.value += f"Grid {cur_grid} Run {cur_run} failed with an exception: <br>"
-        self.value += f"{exception} \n\n ---"
+        self.value += f"Grid {cur_grid} Run {cur_run} failed with an exception: \n\n"
+        self.value += f"{exception} \n\n --- \n\n"
