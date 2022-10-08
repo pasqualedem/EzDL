@@ -2,8 +2,8 @@ import time
 
 import streamlit as st
 
-from ezdl.app.markdown import title_builder, exp_summary_builder, grid_summary_builder, MkFailures
-from ezdl.experiment.experiment import ExpSettings, Experimenter
+from ezdl.app.markdown import title_builder, exp_summary_builder, grid_summary_builder, MkFailures, wandb_run_link
+from ezdl.experiment.experiment import ExpSettings, Experimenter, Status
 
 from ezdl.utils.utilities import load_yaml
 
@@ -46,7 +46,8 @@ def set_file():
     file = st.session_state.parameter_file
     if file is None:
         return
-    settings = load_yaml(file)
+    settings, st_string = load_yaml(file, return_string=True)
+    st.session_state.settings_string = settings
     sm, grids, dots = st.session_state.experimenter.calculate_runs(settings)
     st.session_state.mk_summary = exp_summary_builder(st.session_state.experimenter)
     st.session_state.mk_params = grid_summary_builder(grids, dots)
@@ -54,6 +55,7 @@ def set_file():
 
 class Interface:
     def __init__(self, parameter_file, exp_settings: ExpSettings = None, share: bool = True):
+        self.mk_wandb_link = None
         self.mk_cur_params = None
         self.failures = None
         self.mk_failures = None
@@ -64,7 +66,7 @@ class Interface:
             st.session_state.mk_summary = exp_summary_builder(st.session_state.experimenter)
 
         st.set_page_config(
-            layout="centered", page_icon="🖱️", page_title="EzDL"
+            layout="wide", page_icon="🖱️", page_title="EzDL"
         )
         st.title("EzDL")
         st.write(
@@ -73,6 +75,7 @@ class Interface:
         es = st.session_state.experimenter.exp_settings
         with st.sidebar:
             with st.form("exp_form"):
+                self.form_path = st.text_input("Experiment name (path)", value=es.name)
                 self.form_group = st.text_input("Experiment group", value=es.group)
                 self.form_track_dir = st.text_input("Tracking directory", value=es.tracking_dir)
                 self.form_grid = st.number_input("Start from grid", min_value=0, value=es.start_from_grid)
@@ -91,76 +94,57 @@ class Interface:
 
             self.parameter_file = st.file_uploader("Parameter file", on_change=set_file, key="parameter_file")
         if submitted or st.session_state.parameter_file:
-            st.write("## ", st.session_state.experimenter.exp_settings.group)
+            st.write("## ", f"{es.name} - {es.group}")
+            with st.expander("Grid file"):
+                print(st.session_state.settings_string)
+                st.code(st.session_state.settings_string, language="yaml")
             col1, col2 = st.columns(2)
             with col1:
-                st.write(st.session_state.mk_summary)
+                st.markdown(st.session_state.mk_summary, unsafe_allow_html=True)
             with col2:
                 st.write(st.session_state.mk_params)
             launch = st.button("Launch!")
             if launch:
                 self.experiment()
 
-    def update_bars(self, bars, n_grids, n_runs, status, cur_run, cur_grid, exception):
-        for i in range(n_grids):
-            if i < cur_grid:
+    def update_bars(self, bars, status: Status):
+        for i in range(status.n_grids):
+            if i < status.grid:
                 bars[i].progress(1.0)
-            elif i == cur_grid:
-                if status in ["finished", "crashed"]:
-                    cur_run += 1
-                bars[i].progress(cur_run / n_runs)
+            elif i == status.grid:
+                if status in [Status.FINISHED, Status.CRASHED]:
+                    status.run += 1
+                bars[i].progress(status.run / status.grid_len)
             else:
                 bars[i].progress(0)
-        self.json.json({1:2, 3:4})
-        self.mk_progress.text(f"Grid {cur_grid} / {n_grids - 1} \n"
-                              f"Run  {cur_run - 1} / {n_runs - 1}")
+        self.json.json(status.params, expanded=False)
+        self.mk_progress.text(f"Grid {status.grid} / {status.n_grids - 1} \n"
+                              f"Run  {status.run} / {status.grid_len - 1}")
         if status == "crashed":
-            self.failures.update(cur_grid, cur_run, exception)
+            self.failures.update(status.grid, status.run, status.exception)
             self.mk_failures.markdown(self.failures.get_text())
+        if status == Status.STARTING:
+            print("Just started")
+        if status.wandb_run is not None:
+            self.mk_wandb_link.markdown(wandb_run_link(status.wandb_run))
 
     def experiment(self):
         self.mk_progress = st.text("Starting... wait!")
         bars = [st.progress(0) for i in range(len(st.session_state.experimenter.grids))]
-        # bars = [st.progress(0), st.progress(0), st.progress(0)]
         col1, col2 = st.columns(2)
         with col1:
-            self.mk_cur_params = st.markdown("### Current parameters")
+            self.mk_cur_params = st.markdown("### Current run")
+            self.mk_wandb_link = st.markdown("Waiting to create run on Wandb")
             self.json = st.empty()
         with col2:
             self.failures = MkFailures()
             self.mk_failures = st.markdown("### Failures")
-        for out in st.session_state.experimenter.execute_runs_generator():
-        # for out in placeholder():
-            cur_grid, cur_run, n_grids, n_runs, status, run_params, exception = out
-            self.update_bars(bars, n_grids, n_runs, status, cur_run, cur_grid, exception)
+        for status in st.session_state.experimenter.execute_runs_generator():
+            self.update_bars(bars, status)
         st.balloons()
-
-
-def placeholder():
-    grids = [(0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (2, 0), (2, 1)]
-    n_runs = [3, 2, 2]
-    for grid, run in grids:
-        time.sleep(1)
-        yield grid, run, 3, n_runs[grid], "finished", {}, None
 
 
 def frontend(parameter_file, args, share):
     settings = ExpSettings(**args)
     Interface(parameter_file, settings, share)
-    # import datetime
-    # st.title('Counter Example')
-    # if 'count' not in st.session_state:
-    #     st.session_state.count = 0
-    #     st.session_state.last_updated = datetime.time(0, 0)
-    #
-    # def update_counter():
-    #     st.session_state.count += st.session_state.increment_value
-    #     st.session_state.last_updated = st.session_state.update_time
-    #
-    # with st.form(key='my_form'):
-    #     st.time_input(label='Enter the time', value=datetime.datetime.now().time(), key='update_time')
-    #     st.number_input('Enter a value', value=0, step=1, key='increment_value')
-    #     submit = st.form_submit_button(label='Update', on_click=update_counter)
-    #
-    # st.write('Current Count = ', st.session_state.count)
-    # st.write('Last Updated = ', st.session_state.last_updated)
+

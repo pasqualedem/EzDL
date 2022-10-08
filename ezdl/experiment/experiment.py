@@ -47,6 +47,7 @@ class ExpSettings(EasyDict):
         self.group = ""
         self.continue_with_errors = True
         super().__init__(*args, **kwargs)
+        self.tracking_dir = self.tracking_dir or ""
 
     def update(self, e: ExpSettings, **f):
         if e is None:
@@ -59,6 +60,53 @@ class ExpSettings(EasyDict):
         self.excluded_files = e.excluded_files or self.excluded_files
         self.group = e.group or self.group
         self.continue_with_errors = not e.continue_with_errors or self.continue_with_errors
+
+
+class Status:
+    STARTING = "starting"
+    CRASHED = "crashed"
+    FINISHED = "finished"
+
+    def __init__(self, grid, run, params, n_grids, grid_len, wandb_run=None):
+        self.grid = grid
+        self.run = run
+        self.params = params
+        self.status = self.STARTING
+        self.grid_len = grid_len
+        self.n_grids = n_grids
+        self.exception = None
+        self.wandb_run = wandb_run
+
+    def finish(self):
+        self.params = {}
+        self.status = self.FINISHED
+        return self
+
+    def crash(self, exception):
+        self.status = self.CRASHED
+        self.exception = exception
+        return self
+
+
+class StatusManager:
+    def __init__(self, n_grids):
+        self.n_grids = n_grids
+        self.cur_status = None
+
+    def new_run(self, grid, run, params, grid_len, wandb_run=None):
+        self.cur_status = Status(grid=grid, run=run, params=params,
+                                 n_grids=self.n_grids, grid_len=grid_len, wandb_run=wandb_run)
+        return self.cur_status
+
+    def update_run(self, wandb_run):
+        self.cur_status.wandb_run = wandb_run
+        return self.cur_status
+
+    def finish_run(self):
+        return self.cur_status.finish()
+
+    def crash_run(self, exception):
+        return self.cur_status.crash_run(exception)
 
 
 class Experimenter:
@@ -110,12 +158,13 @@ class Experimenter:
             total_runs_excl=total_runs_excl
         )
 
-    def execute_runs_generator(self, callback=None):
+    def execute_runs_generator(self):
         track_dir = self.exp_settings['tracking_dir']
         if track_dir:
             os.makedirs(track_dir, exist_ok=True)
         exp_log = ExpLog(track_dir, self.exp_settings.name, self.exp_settings.group)
         starting_run = self.exp_settings.start_from_run
+        status_manager = StatusManager(len(self.grids))
         if self.exp_settings.resume_last:
             logger.info("+ another run to finish!")
             grid_len = len(self.grids[self.exp_settings.start_from_grid])
@@ -125,22 +174,19 @@ class Experimenter:
             try:
                 exp_log.insert_run(sg, sr)
                 run = get_interrupted_run(self.exp_settings)
-                if callback:
-                    yield callback(self.exp_settings.start_from_grid, self.exp_settings.start_from_run - 1,
-                                   len(self.grids), grid_len,
-                                   status="started", run_params=run.params)
+                yield status_manager.new_run(sg, sr, run.params, grid_len, run)
                 logger.info(f'Running grid {sg} out of {len(self.grids) - 1}')
                 logger.info(f'Running run {sr - 1} out of {grid_len} '
                             f'({sum([len(self.grids[k]) for k in range(sg)]) + sr} / {self.gs.total_runs - 1})')
                 run.launch()
                 exp_log.finish_run(sg, sr)
+                yield status_manager.finish_run()
             except Exception as e:
                 logger.error(f'Experiment {sg} failed with error {e}')
                 exp_log.finish_run(sg, sr, crashed=True)
                 if not self.exp_settings.continue_with_errors:
                     raise e
-                if callback:
-                    yield callback(sg, sr, len(self.grids), grid_len, status="crashed", run_params={}, exception=e)
+                yield status_manager.crash_run(e)
         for i in range(self.exp_settings.start_from_grid, len(self.grids)):
             grid = self.grids[i]
             if i != self.exp_settings.start_from_grid:
@@ -149,25 +195,23 @@ class Experimenter:
                 params = grid[j]
                 try:
                     exp_log.insert_run(i, j)
-                    if callback:
-                        yield callback(i, j, len(self.grids), len(grid), status="started", run_params=params)
+                    yield status_manager.new_run(i, j, params, len(grid))
                     logger.info(f'Running grid {i} out of {len(self.grids) - 1}')
                     logger.info(f'Running run {j} out of {len(grid) - 1} '
                                 f'({sum([len(self.grids[k]) for k in range(i)]) + j} / {self.gs.total_runs - 1})')
                     run = Run()
                     run.init({'experiment': {**self.exp_settings}, **params})
+                    yield status_manager.update_run(run.seg_trainer.sg_logger.run)
                     run.launch()
                     exp_log.finish_run(i, j)
                     gc.collect()
-                    if callback:
-                        yield callback(i, j, len(self.grids), len(grid), status="finished", run_params={})
+                    yield status_manager.finish_run()
                 except Exception as e:
                     logger.error(f'Experiment {i} failed with error {e}')
                     exp_log.finish_run(i, j, crashed=True)
                     if not self.exp_settings.continue_with_errors:
                         raise e
-                    if callback:
-                        yield callback(i, j, len(self.grids), len(grid), status="crashed", run_params={}, exception=e)
+                    yield status_manager.crash_run(e)
 
     def execute_runs(self):
         for _ in self.execute_runs_generator():

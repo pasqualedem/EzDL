@@ -302,7 +302,7 @@ class WandBSGLogger(BaseSGLogger):
         self.resumed = resumed
         resume = 'must' if resumed else None
         os.makedirs(checkpoints_dir_path, exist_ok=True)
-        run = wandb.init(project=project_name, name=experiment_name,
+        self.run = wandb.init(project=project_name, name=experiment_name,
                          entity=entity, resume=resume, id=run_id, tags=tags,
                          dir=checkpoints_dir_path, **kwargs)
         if save_code:
@@ -311,12 +311,12 @@ class WandBSGLogger(BaseSGLogger):
         self.save_checkpoints_wandb = save_checkpoints_remote
         self.save_tensorboard_wandb = save_tensorboard_remote
         self.save_logs_wandb = save_logs_remote
-        checkpoints_dir_path = os.path.relpath(run.dir, os.getcwd())
+        checkpoints_dir_path = os.path.relpath(self.run.dir, os.getcwd())
         super().__init__(project_name, experiment_name, storage_location, resumed, training_params,
                          checkpoints_dir_path, tb_files_user_prompt, launch_tensorboard, tensorboard_port,
                          self.s3_location_available, self.s3_location_available, self.s3_location_available)
 
-        self._set_wandb_id(run.id)
+        self._set_wandb_id(self.run.id)
         if api_server is not None:
             if api_server != os.getenv('WANDB_BASE_URL'):
                 logger.warning(f'WANDB_BASE_URL environment parameter not set to {api_server}. Setting the parameter')

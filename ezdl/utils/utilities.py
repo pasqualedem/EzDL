@@ -110,11 +110,20 @@ def dict_to_yaml_string(mapping: Mapping) -> str:
     return output_str
 
 
-def load_yaml(path):
+def load_yaml(path, return_string=False):
     if hasattr(path, "readlines"):
-        return YAML(typ='safe', pure=True).load(path)
+        d = YAML(typ='safe', pure=True).load(path)
+        if return_string:
+            print("RED ------------------------------------------------------------------------------------------------------------------------------")
+            print(path.read())
+            print("REDLInes------------------------------------------------------------------------------------------------------------------------------")
+            print(path.readlines())
+            print("------------------------------------------------------------------------------------------------------------------------------")
+            return d, path.read()
     with open(path, 'r') as param_stream:
-        return YAML(typ='safe', pure=True).load(param_stream)
+        d = YAML(typ='safe', pure=True).load(param_stream)
+        if return_string:
+            return d, param_stream.read()
 
 
 def values_to_number(collec) -> Any:

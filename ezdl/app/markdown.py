@@ -1,7 +1,15 @@
 import pandas as pd
+import wandb
 
 from ezdl.utils.grid import linearized_to_string
 from ezdl.experiment.experiment import Experimenter
+
+
+def format_bool(value: bool):
+    if value:
+        return '<span style="color:green">True</span>'
+    else:
+        return '<span style="color:red">False</span>'
 
 
 def exp_summary_builder(exp: Experimenter):
@@ -11,10 +19,11 @@ def exp_summary_builder(exp: Experimenter):
     txt += "### Experiment summary \n"
     txt += "|Property | Value |\n"
     txt += "|---------|-------|\n"
-    txt += f"|Resume experiment            | {exp.exp_settings.resume} |\n"
-    txt += f"|Resume interrupted run       | {exp.exp_settings.resume_last} |\n"
-    txt += f"|Continue with errors         | {exp.exp_settings.continue_with_errors} |\n"
+    txt += f"|Resume experiment            | {format_bool(exp.exp_settings.resume)} |\n"
+    txt += f"|Resume interrupted run       | {format_bool(exp.exp_settings.resume_last)} |\n"
+    txt += f"|Continue with errors         | {format_bool(exp.exp_settings.continue_with_errors)} |\n"
     txt += f"|Excluded files               | {exp.exp_settings.excluded_files} |\n"
+    txt += f"|Tracking directory           | {exp.exp_settings.tracking_dir} |\n"
     txt += f"|Starting grid                | {exp.exp_settings.start_from_grid} |\n"
     txt += f"|Starting run                 | {exp.exp_settings.start_from_run} |\n"
     txt += f"|Total runs                   | {exp.gs.total_runs} |\n"
@@ -35,6 +44,10 @@ def grid_summary_builder(grids, dot_elements):
 
 def title_builder(title):
     return f"## {title}"
+
+
+def wandb_run_link(wandb_run):
+    return f"View run on wandb: [{wandb_run.name}]({wandb_run.url})"
 
 
 class MkFailures:
