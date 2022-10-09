@@ -1,14 +1,21 @@
 import sys
+import time
 
+import numpy as np
+import pandas as pd
 import streamlit as st
+import wandb
+from ruamel.yaml import YAML
 from ruamel.yaml.scanner import ScannerError
 from streamlit.web import cli as stcli
 from streamlit_ace import st_ace
 
-from ezdl.app.markdown import exp_summary_builder, grid_summary_builder, MkFailures, wandb_run_link
+from app.utils import ManipulationInputs
+from ezdl.app.markdown import exp_summary_builder, grid_summary_builder, MkFailures, wandb_run_link, format_to_delete
 from ezdl.experiment.experiment import ExpSettings, Experimenter, Status
 
 from ezdl.utils.utilities import load_yaml, dict_to_yaml, yaml_string_to_dict
+from wandb_manip import update_metadata, fix_string_param, remove_key, delete_files, delete_artifacts, update_config
 
 STREAMLIT_AGGRID_URL = "https://github.com/PablocFonseca/streamlit-aggrid"
 
@@ -78,21 +85,28 @@ class Interface:
         self.mk_failures = None
         self.current_params = None
         if "experimenter" not in st.session_state:
-            experimenter = Experimenter()
-            st.session_state.experimenter = experimenter
-            experimenter.exp_settings.update(exp_settings)
-            st.session_state.mk_summary = exp_summary_builder(experimenter)
+            self.experimenter = Experimenter()
+            st.session_state.experimenter = self.experimenter
+            self.experimenter.exp_settings.update(exp_settings)
+            st.session_state.mk_summary = exp_summary_builder(self.experimenter)
         else:
-            experimenter = st.session_state.experimenter
+            self.experimenter = st.session_state.experimenter
 
         st.set_page_config(
             layout="wide", page_icon="🖱️", page_title="EzDL"
         )
         st.title("EzDL")
+        tab1, tab2, = st.tabs(["Training", "Manipulation"])
+        with tab1:
+            self.experiment_interface()
+        with tab2:
+            self.manipulation_interface()
+
+    def experiment_interface(self):
         st.write(
             """Train your model!"""
         )
-        es = experimenter.exp_settings
+        es = self.experimenter.exp_settings
         with st.sidebar:
             with st.form("exp_form"):
                 self.form_path = st.text_input("Experiment name (path)", value=es.name)
@@ -135,6 +149,88 @@ class Interface:
             launch = st.button("Launch!")
             if launch:
                 self.experiment()
+
+    def manipulation_interface(self):
+        if "manip" not in st.session_state:
+            st.session_state.manip = ManipulationInputs()
+        path = st.text_input("wandb experiment path")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.text("Filters")
+            filters = st_ace(language="yaml", theme="twilight", key="filters")
+        with col2:
+            st.text("Updated config")
+            updated_config = st_ace(language="yaml", theme="twilight", key="updated_config")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.text("Updated meta config")
+            updated_meta = st_ace(language="yaml", theme="twilight", key="updated_meta")
+        with col2:
+            st.text("What to delete")
+            to_delete_place = "keys:\n" \
+                              "files:\n" \
+                              "artifacts:\n"
+            to_delete = st_ace(value=to_delete_place, language="yaml", theme="twilight", key="to_delete")
+
+        fix_string_params = st.checkbox("Fix string parameters turning them into numbers")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            launch = st.button("Go")
+        with col2:
+            preview = st.button("Retrieve runs and preview")
+
+        st.session_state.manip.update(
+            path, filters, updated_config, updated_meta, to_delete, fix_string_params
+        )
+
+        if launch:
+            self.manipulate()
+
+        if preview:
+            self.preview_manipulation()
+
+    def manipulate(self):
+        mp = st.session_state.manip
+        api = wandb.Api()
+        runs = api.runs(path=mp.path, filters=mp.filters)
+        if len(runs) != 0:
+            for run in runs:
+                print(f"Name: {run.name} Id: {run.id}")
+                if mp.fix_string_params:
+                    fix_string_param(run)
+                if mp.updated_config is None:
+                    print('No config to update')
+                else:
+                    update_config(run, mp.updated_config)
+                if mp.updated_metadata is None:
+                    print('No metadata to update')
+                else:
+                    update_metadata(run, mp.updated_metadata)
+                if mp.keys_to_delete is None:
+                    print('No keys to delete')
+                else:
+                    remove_key(run, mp.keys_to_delete)
+                if mp.files_to_delete is None:
+                    print("No files to delete")
+                else:
+                    delete_files(run, mp.files_to_delete)
+                if mp.artifacts_to_delete is None:
+                    print("No artifacts to delete")
+                else:
+                    delete_artifacts(run, mp.artifacts_to_delete)
+
+    def preview_manipulation(self):
+        api = wandb.Api()
+        mp = st.session_state.manip
+        runs = api.runs(path=mp.path, filters=mp.filters)
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            st.table(
+                {"Name": list(map(lambda x: x.name, runs)), "Group": list(map(lambda x: x.group, runs)), "Id": list(map(lambda x: x.id, runs))}
+            )
+        with col2:
+            st.markdown(format_to_delete(mp.keys_to_delete, mp.files_to_delete, mp.artifacts_to_delete))
 
     def update_bars(self, bars, status: Status):
         for i in range(status.n_grids):

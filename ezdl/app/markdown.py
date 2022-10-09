@@ -42,6 +42,10 @@ def grid_summary_builder(grids, dot_elements):
     return mark_grids
 
 
+def format_to_delete(keys, files, artifacts):
+    pass
+
+
 def title_builder(title):
     return f"## {title}"
 
