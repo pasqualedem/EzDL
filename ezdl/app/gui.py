@@ -1,14 +1,14 @@
 import sys
-import time
 
 import streamlit as st
-import streamlit.web.bootstrap as bootstrap
+from ruamel.yaml.scanner import ScannerError
 from streamlit.web import cli as stcli
+from streamlit_ace import st_ace
 
 from ezdl.app.markdown import exp_summary_builder, grid_summary_builder, MkFailures, wandb_run_link
 from ezdl.experiment.experiment import ExpSettings, Experimenter, Status
 
-from ezdl.utils.utilities import load_yaml
+from ezdl.utils.utilities import load_yaml, dict_to_yaml, yaml_string_to_dict
 
 STREAMLIT_AGGRID_URL = "https://github.com/PablocFonseca/streamlit-aggrid"
 
@@ -46,11 +46,25 @@ def set_file():
     st.session_state.experimenter = Experimenter()
     st.session_state.experimenter.exp_settings = ExpSettings()
     st.session_state.mk_summary = ""
+    st.session_state.mk_params = ""
     file = st.session_state.parameter_file
     if file is None:
         return
     settings, st_string = load_yaml(file, return_string=True)
-    st.session_state.settings_string = settings
+    st.session_state.settings_string = st_string
+    set_settings(settings)
+
+
+def edit_file():
+    st.session_state.experimenter = Experimenter()
+    st.session_state.experimenter.exp_settings = ExpSettings()
+    st.session_state.mk_summary = ""
+    st.session_state.mk_params = ""
+    settings = yaml_string_to_dict(st.session_state.settings_string)
+    set_settings(settings)
+
+
+def set_settings(settings):
     sm, grids, dots = st.session_state.experimenter.calculate_runs(settings)
     st.session_state.mk_summary = exp_summary_builder(st.session_state.experimenter)
     st.session_state.mk_params = grid_summary_builder(grids, dots)
@@ -62,7 +76,7 @@ class Interface:
         self.mk_cur_params = None
         self.failures = None
         self.mk_failures = None
-        self.json = None
+        self.current_params = None
         if "experimenter" not in st.session_state:
             experimenter = Experimenter()
             st.session_state.experimenter = experimenter
@@ -88,22 +102,31 @@ class Interface:
                 self.form_run = st.number_input("Start from run", min_value=0, value=es.start_from_run)
                 self.form_resume = st.checkbox("Resume", value=es.resume)
                 self.form_continue = st.checkbox("Continue with errors", value=es.continue_with_errors)
-                submitted = st.form_submit_button("Submit", on_click=update_from_gui,
-                                                  kwargs=dict(
-                                                      group=self.form_group,
-                                                      track_dir=self.form_track_dir,
-                                                      start_grid=self.form_grid,
-                                                      start_run=self.form_run,
-                                                      resume=self.form_resume,
-                                                      continue_errors=self.form_continue
-                                                  ))
+                submitted = st.form_submit_button("Submit")
+                if submitted:
+                    update_from_gui(group=self.form_group,
+                                    track_dir=self.form_track_dir,
+                                    start_grid=self.form_grid,
+                                    start_run=self.form_run,
+                                    resume=self.form_resume,
+                                    continue_errors=self.form_continue)
 
             self.parameter_file = st.file_uploader("Parameter file", on_change=set_file, key="parameter_file")
-        if submitted or ("parameter_file" in st.session_state and st.session_state.parameter_file):
+        if "parameter_file" in st.session_state and st.session_state.parameter_file:
             st.write("## ", f"{es.name} - {es.group}")
+            self.yaml_error = st.empty()
             with st.expander("Grid file"):
-                print(st.session_state.settings_string)
-                st.code(st.session_state.settings_string, language="yaml")
+                st.session_state.edit_mode = st.button("Edit") ^ \
+                                             ("edit_mode" in st.session_state and st.session_state.edit_mode)
+                if st.session_state.edit_mode:
+                    st.session_state.settings_string = st_ace(
+                        value=st.session_state.settings_string, language="yaml", theme="twilight")
+                    try:
+                        edit_file()
+                    except ScannerError as e:
+                        self.yaml_error.exception(e)
+                else:
+                    st.code(st.session_state.settings_string, language="yaml")
             col1, col2 = st.columns(2)
             with col1:
                 st.markdown(st.session_state.mk_summary, unsafe_allow_html=True)
@@ -123,7 +146,7 @@ class Interface:
                 bars[i].progress(status.run / status.grid_len)
             else:
                 bars[i].progress(0)
-        self.json.json(status.params, expanded=False)
+        self.current_params.code(dict_to_yaml(status.params), language="yaml")
         self.mk_progress.text(f"Grid {status.grid} / {status.n_grids - 1} \n"
                               f"Run  {status.run} / {status.grid_len - 1}")
         if status == "crashed":
@@ -141,7 +164,7 @@ class Interface:
         with col1:
             self.mk_cur_params = st.markdown("### Current run")
             self.mk_wandb_link = st.markdown("Waiting to create run on Wandb")
-            self.json = st.empty()
+            self.current_params = st.empty()
         with col2:
             self.failures = MkFailures()
             self.mk_failures = st.markdown("### Failures")
@@ -183,7 +206,3 @@ def streamlit_entry(parameter_file, args, share):
 
 def frontend(args):
     launch_streamlit(args)
-
-# def frontend(parameter_file, args, share):
-#     settings = ExpSettings(**args)
-#     Interface(parameter_file, settings, share)

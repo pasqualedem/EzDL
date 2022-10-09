@@ -41,7 +41,7 @@ setuptools.setup(
         "transformers",
         "einops",
         "streamlit",
-        "streamlit-aggrid",
+        "streamlit-ace",
         "easydict",
     ]
 )
