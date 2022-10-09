@@ -25,6 +25,7 @@ setuptools.setup(
         ]
     },
     install_requires=[
+        "click",
         "matplotlib",
         "numpy",
         "opencv-python",

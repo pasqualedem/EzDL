@@ -175,13 +175,6 @@ class Interface:
 
 def launch_streamlit(args):
     sys.argv = ["streamlit", "run", "./ezdl/app/guicli.py"]
-    # cli_args = f'-- ' \
-    #            f'--f {args.file} ' \
-    #            f'--grid {args.grid} ' \
-    #            f'--run {args.run} ' \
-    #            f'--resume {args.resume} ' \
-    #            f'--dir {args.dir} ' \
-    #            f'--share {args.share}'
     cli_args = ['--',
                 '--grid', str(args.grid),
                 '--run', str(args.run),
@@ -192,8 +185,6 @@ def launch_streamlit(args):
         cli_args += ['--file', args.file]
     if args.resume:
         cli_args += ['--resume']
-    if args.share:
-        cli_args += ['--share']
 
     sys.argv += cli_args
     sys.exit(stcli.main())

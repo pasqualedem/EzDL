@@ -126,6 +126,7 @@ def load_yaml(path, return_string=False):
         if return_string:
             param_stream.seek(0)
             return d, str(param_stream.read())
+    return d
 
 
 def dict_to_yaml(d: Mapping):
