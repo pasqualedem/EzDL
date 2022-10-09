@@ -1,4 +1,5 @@
 import collections
+import io
 import os
 from io import StringIO
 from typing import Any, Mapping
@@ -110,10 +111,28 @@ def dict_to_yaml_string(mapping: Mapping) -> str:
     return output_str
 
 
-def load_yaml(path):
+def yaml_string_to_dict(s):
+    return YAML(typ='safe', pure=True).load(s)
+
+
+def load_yaml(path, return_string=False):
+    if hasattr(path, "readlines"):
+        d = YAML(typ='safe', pure=True).load(path)
+        if return_string:
+            path.seek(0)
+            return d, path.read().decode('utf-8')
     with open(path, 'r') as param_stream:
         d = YAML(typ='safe', pure=True).load(param_stream)
-    return d
+        if return_string:
+            param_stream.seek(0)
+            return d, str(param_stream.read())
+
+
+def dict_to_yaml(d: Mapping):
+    stream = io.StringIO()
+    YAML().dump(d, stream)
+    stream.seek(0)
+    return stream.read()
 
 
 def values_to_number(collec) -> Any:

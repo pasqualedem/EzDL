@@ -1,23 +1,16 @@
-import time
+import sys
 
-import gradio as gr
-import numpy as np
-import pandas as pd
-import torch
-import wandb
+import streamlit as st
+from ruamel.yaml.scanner import ScannerError
+from streamlit.web import cli as stcli
+from streamlit_ace import st_ace
 
-from ezdl.app.markdown import grid_summary_builder, exp_summary_builder, title_builder, MkFailures
-from ezdl.utils.utilities import load_yaml, update_collection
-from ezdl.utils.segmentation import tensor_to_segmentation_image
-from ezdl.app.inference import WandbInferencer, compose_images
+from ezdl.app.markdown import exp_summary_builder, grid_summary_builder, MkFailures, wandb_run_link
+from ezdl.experiment.experiment import ExpSettings, Experimenter, Status
 
-from ezdl.experiment.experiment import Experimenter, ExpSettings
+from ezdl.utils.utilities import load_yaml, dict_to_yaml, yaml_string_to_dict
 
-DEFAULT_CMAP = {
-    0: (0, 0, 0),
-    1: (255, 0, 0),
-    2: (0, 255, 0)
-}
+STREAMLIT_AGGRID_URL = "https://github.com/PablocFonseca/streamlit-aggrid"
 
 
 def DEFAULTS(key=None):
@@ -35,217 +28,181 @@ def DEFAULTS(key=None):
         return ""
 
 
-TITLE = "# EzDL"
-TEXT = "Load config and model to select image channels"
-DIV = "---"
-COLS = ['Grid', 'N. runs']
+def update_from_gui(group, track_dir, start_grid, start_run, resume, continue_errors):
+    if st.session_state.experimenter is None:
+        st.session_state.experimenter = Experimenter()
+    st.session_state.experimenter.update_settings({
+        "resume": resume,
+        "continue_with_errors": continue_errors,
+        "start_from_grid": start_grid,
+        "start_from_run": start_run,
+        "tracking_dir": track_dir,
+        "group": group,
+    })
+    st.session_state.mk_summary = exp_summary_builder(st.session_state.experimenter)
 
 
-def segment(pred: torch.Tensor):
-    pred = pred.squeeze(0).argmax(dim=0).cpu()
-    return tensor_to_segmentation_image(pred, DEFAULT_CMAP)
+def set_file():
+    st.session_state.experimenter = Experimenter()
+    st.session_state.experimenter.exp_settings = ExpSettings()
+    st.session_state.mk_summary = ""
+    st.session_state.mk_params = ""
+    file = st.session_state.parameter_file
+    if file is None:
+        return
+    settings, st_string = load_yaml(file, return_string=True)
+    st.session_state.settings_string = st_string
+    set_settings(settings)
 
 
-def flag_maker(exp_setings: ExpSettings):
-    flags = []
-    if exp_setings.resume:
-        flags.append('resume')
-    if exp_setings.continue_with_errors:
-        flags.append('continue_with_errors')
-    return flags
+def edit_file():
+    st.session_state.experimenter = Experimenter()
+    st.session_state.experimenter.exp_settings = ExpSettings()
+    st.session_state.mk_summary = ""
+    st.session_state.mk_params = ""
+    settings = yaml_string_to_dict(st.session_state.settings_string)
+    set_settings(settings)
+
+
+def set_settings(settings):
+    sm, grids, dots = st.session_state.experimenter.calculate_runs(settings)
+    st.session_state.mk_summary = exp_summary_builder(st.session_state.experimenter)
+    st.session_state.mk_params = grid_summary_builder(grids, dots)
 
 
 class Interface:
-    def __init__(self, parameter_file: str = None, exp_settings: ExpSettings = None, share: bool = False):
-        with gr.Blocks() as demo:
-            gr.Markdown(TITLE)
-            with gr.Tab("Training"):
-                TrainingInterface(parameter_file, exp_settings)
-            with gr.Tab("Inference"):
-                InferenceInterface()
-
-        demo.queue()
-        demo.launch(share=share)
-
-
-class InferenceInterface:
-    def __init__(self):
-        use_gpu = gr.components.Checkbox(label="Use GPU")
-        with gr.Row():
-            model = gr.components.File(type='file', label="Model checkpoint in Wandb folder")
-            config = gr.components.File(type='file', label="Wandb config input")
-        text = gr.Textbox(TEXT, show_label=False)
-        divider = gr.Markdown(DIV)
-        with gr.Row() as self.input_images_row:
-            self.input_channels = {
-                'R': gr.Image(type='pil', image_mode='L', label='R Channel', visible=False),
-                'G': gr.Image(type='pil', image_mode='L', label='G Channel', visible=False),
-                'B': gr.Image(type='pil', image_mode='L', label='B Channel', visible=False),
-                "NDVI": gr.Image(type='pil', image_mode='L', label='NDVI Channel', visible=False),
-                "NIR": gr.Image(type='pil', image_mode='L', label='NIR Channel', visible=False),
-            }
-        config.change(self.set_model,
-                      inputs=[model, config, use_gpu],
-                      outputs=[*self.input_channels.values(), text],
-                      )
-        model.change(self.set_model,
-                     inputs=[model, config, use_gpu],
-                     outputs=[*self.input_channels.values(), text],
-                     )
-        submit = gr.Button(variant="primary")
-        segmentation = gr.Image(label="Segmentation")
-
-        submit.click(self.predict, inputs=[use_gpu, *self.input_channels.values()], outputs=[segmentation])
-
-    def set_model(self, model_path_wrapper, config_wrapper, gpu):
-        if model_path_wrapper is None or config_wrapper is None:
-            return [gr.update(visible=False) for _ in self.input_channels] + [TEXT]
-        self.inferencer = WandbInferencer(model_path_wrapper, config_wrapper, gpu)
-        input_channels = []
-        for channel, input_form in self.input_channels.items():
-            if channel in self.inferencer.channels:
-                input_channels.append(gr.update(visible=True))
-            else:
-                input_channels.append(gr.update(visible=False))
-        return input_channels + ["".join([f"{channel} " for channel in self.inferencer.channels]) + "needed"]
-
-    def predict(self, use_gpu, *inputs):
-        if use_gpu:
-            self.inferencer.cuda()
+    def __init__(self, parameter_file, exp_settings: ExpSettings = None, share: bool = True):
+        self.mk_wandb_link = None
+        self.mk_cur_params = None
+        self.failures = None
+        self.mk_failures = None
+        self.current_params = None
+        if "experimenter" not in st.session_state:
+            experimenter = Experimenter()
+            st.session_state.experimenter = experimenter
+            experimenter.exp_settings.update(exp_settings)
+            st.session_state.mk_summary = exp_summary_builder(experimenter)
         else:
-            self.inferencer.cpu()
-        inputs = filter(lambda x: x is not None, inputs)
-        image = compose_images(list(inputs))
-        pred = self.inferencer(image)
-        segmentation = segment(pred)
-        return segmentation
+            experimenter = st.session_state.experimenter
 
+        st.set_page_config(
+            layout="wide", page_icon="🖱️", page_title="EzDL"
+        )
+        st.title("EzDL")
+        st.write(
+            """Train your model!"""
+        )
+        es = experimenter.exp_settings
+        with st.sidebar:
+            with st.form("exp_form"):
+                self.form_path = st.text_input("Experiment name (path)", value=es.name)
+                self.form_group = st.text_input("Experiment group", value=es.group)
+                self.form_track_dir = st.text_input("Tracking directory", value=es.tracking_dir)
+                self.form_grid = st.number_input("Start from grid", min_value=0, value=es.start_from_grid)
+                self.form_run = st.number_input("Start from run", min_value=0, value=es.start_from_run)
+                self.form_resume = st.checkbox("Resume", value=es.resume)
+                self.form_continue = st.checkbox("Continue with errors", value=es.continue_with_errors)
+                submitted = st.form_submit_button("Submit")
+                if submitted:
+                    update_from_gui(group=self.form_group,
+                                    track_dir=self.form_track_dir,
+                                    start_grid=self.form_grid,
+                                    start_run=self.form_run,
+                                    resume=self.form_resume,
+                                    continue_errors=self.form_continue)
 
-class TrainingInterface:
+            self.parameter_file = st.file_uploader("Parameter file", on_change=set_file, key="parameter_file")
+        if "parameter_file" in st.session_state and st.session_state.parameter_file:
+            st.write("## ", f"{es.name} - {es.group}")
+            self.yaml_error = st.empty()
+            with st.expander("Grid file"):
+                st.session_state.edit_mode = st.button("Edit") ^ \
+                                             ("edit_mode" in st.session_state and st.session_state.edit_mode)
+                if st.session_state.edit_mode:
+                    st.session_state.settings_string = st_ace(
+                        value=st.session_state.settings_string, language="yaml", theme="twilight")
+                    try:
+                        edit_file()
+                    except ScannerError as e:
+                        self.yaml_error.exception(e)
+                else:
+                    st.code(st.session_state.settings_string, language="yaml")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown(st.session_state.mk_summary, unsafe_allow_html=True)
+            with col2:
+                st.write(st.session_state.mk_params)
+            launch = st.button("Launch!")
+            if launch:
+                self.experiment()
 
-    def __init__(self, parameter_file: str = None, exp_settings: ExpSettings = None):
-        self.experimenter = Experimenter()
-        default_updates = self.set_file(parameter_file)
-        self.experimenter.exp_settings.update(exp_settings)
-        exp_settings = self.experimenter.exp_settings
-        gr.Markdown("Train your model!")
-        with gr.Row():
-            self.group_txt = gr.Textbox(label="Experiment group", value=exp_settings.group)
-            self.track_dir = gr.Textbox(label="Tracking directory", value=exp_settings.tracking_dir)
-            self.start_from_grid_txt = gr.Number(label="Start from grid",
-                                                 precision=0,
-                                                 value=exp_settings.start_from_grid)
-            self.start_from_run_txt = gr.Number(label="Start from run",
-                                                precision=0,
-                                                value=exp_settings.start_from_run)
-
-            self.flags = gr.CheckboxGroup(["resume", "continue_with_errors"], label="", value=flag_maker(exp_settings))
-
-        self.parameters = gr.File(label="Parameter file", value=parameter_file)
-        self.group_mk = gr.Markdown(exp_settings.group)
-        with gr.Row():
-            self.exp_summary = gr.Markdown(value=default_updates["exp_summary"])
-            self.grids_dataframe = gr.Markdown(value=default_updates["grids_dataframe"])
-
-        parameters_comps = [self.group_txt,
-                            self.track_dir, self.start_from_grid_txt,
-                            self.start_from_run_txt, self.flags]
-        for com in parameters_comps:
-            com.change(self.update_from_gui, inputs=parameters_comps, outputs=[self.group_mk, self.exp_summary])
-        self.parameters.change(self.update_from_file, inputs=[self.parameters],
-                               outputs=[self.group_mk, self.exp_summary, self.grids_dataframe] + parameters_comps)
-
-        self.experiment_btn = gr.Button("Experiment!", variant="primary")
-        self.progress = gr.Label(value={}, label="Progress")
-        with gr.Row():
-            self.json = gr.JSON(label="Current run params")
-            self.failures = MkFailures()
-            self.failures_mk = gr.Markdown(self.failures.get_text())
-        self.experiment_btn.click(self.experiment, inputs=[], outputs=[self.progress, self.json, self.failures_mk])
+    def update_bars(self, bars, status: Status):
+        for i in range(status.n_grids):
+            if i < status.grid:
+                bars[i].progress(1.0)
+            elif i == status.grid:
+                if status in [Status.FINISHED, Status.CRASHED]:
+                    status.run += 1
+                bars[i].progress(status.run / status.grid_len)
+            else:
+                bars[i].progress(0)
+        self.current_params.code(dict_to_yaml(status.params), language="yaml")
+        self.mk_progress.text(f"Grid {status.grid} / {status.n_grids - 1} \n"
+                              f"Run  {status.run} / {status.grid_len - 1}")
+        if status == "crashed":
+            self.failures.update(status.grid, status.run, status.exception)
+            self.mk_failures.markdown(self.failures.get_text())
+        if status == Status.STARTING:
+            print("Just started")
+        if status.wandb_run is not None:
+            self.mk_wandb_link.markdown(wandb_run_link(status.wandb_run))
 
     def experiment(self):
-        yield self.update_progress(self.experimenter.exp_settings.start_from_grid,
-                                   self.experimenter.exp_settings.start_from_run - 1,
-                                   len(self.experimenter.grids),
-                                   len(self.experimenter.grids[self.experimenter.exp_settings.start_from_grid]),
-                                   "starting",
-                                   {})
-        for out in self.experimenter.execute_runs_generator(callback=self.update_progress):
-            yield out
-
-    def update_progress(self, cur_grid, cur_run, n_grids, n_runs, status, run_params, exception=None):
-        d = {}
-        for i in range(n_grids):
-            if i < cur_grid:
-                d[f"Grid {i}"] = 1
-            elif i == cur_grid:
-                if status in ["finished", "crashed"]:
-                    cur_run += 1
-                d[f"Grid {i} ({cur_run} / {n_runs})"] = cur_run / n_runs
-            else:
-                d[f"Grid {i}"] = 0
-        if status == "crashed":
-            self.failures.update(cur_grid, cur_run, exception)
-        return d, run_params, self.failures.get_text()
-
-    def set_file(self, file):
-        self.experimenter = Experimenter()
-        self.experimenter.exp_settings = ExpSettings()
-        if file is None:
-            return DEFAULTS([
-                "group",
-                "track_dir",
-                "start_from_grid",
-                "start_from_run",
-                "flags",
-                "group_mk",
-                "grids_dataframe",
-                "exp_summary",
-            ])
-
-        settings = load_yaml(file.name)
-        sm, grids, dots = self.experimenter.calculate_runs(settings)
-        sum_mk = exp_summary_builder(self.experimenter)
-        params_mk = grid_summary_builder(grids, dots)
-        flags = flag_maker(self.experimenter.exp_settings)
-        return {
-                "group": self.experimenter.exp_settings['group'],
-                "track_dir": self.experimenter.exp_settings['tracking_dir'] or DEFAULTS('tracking_dir'),
-                "start_from_grid": self.experimenter.exp_settings['start_from_grid'],
-                "start_from_run": self.experimenter.exp_settings['start_from_run'],
-                "flags": flags,
-                "group_mk": title_builder(self.experimenter.exp_settings['group']),
-                "exp_summary": sum_mk,
-                "grids_dataframe": params_mk
-            }
-
-    def update_from_file(self, file):
-        updates = self.set_file(file)
-        return {
-                self.group_txt: self.experimenter.exp_settings['group'],
-                self.track_dir: self.experimenter.exp_settings['tracking_dir'] or DEFAULTS('tracking_dir'),
-                self.start_from_grid_txt: self.experimenter.exp_settings['start_from_grid'],
-                self.start_from_run_txt: self.experimenter.exp_settings['start_from_run'],
-                self.flags: updates["flags"],
-                self.group_mk: title_builder(self.experimenter.exp_settings['group']),
-                self.exp_summary: updates["exp_summary"],
-                self.grids_dataframe: updates["grids_dataframe"]
-            }
-
-    def update_from_gui(self, name, track_dir, start_grid, start_run, flags):
-        if self.experimenter is None:
-            self.experimenter = Experimenter()
-        self.experimenter.update_settings({
-            "resume": ("resume" in flags),
-            "continue_with_errors": ("continue_with_errors" in flags),
-            "start_from_grid": start_grid,
-            "start_from_run": start_run,
-            "tracking_dir": track_dir,
-            "group": name,
-        })
-        return title_builder(self.experimenter.exp_settings['group']) or "", exp_summary_builder(self.experimenter)
+        self.mk_progress = st.text("Starting... wait!")
+        bars = [st.progress(0) for i in range(len(st.session_state.experimenter.grids))]
+        col1, col2 = st.columns(2)
+        with col1:
+            self.mk_cur_params = st.markdown("### Current run")
+            self.mk_wandb_link = st.markdown("Waiting to create run on Wandb")
+            self.current_params = st.empty()
+        with col2:
+            self.failures = MkFailures()
+            self.mk_failures = st.markdown("### Failures")
+        for status in st.session_state.experimenter.execute_runs_generator():
+            self.update_bars(bars, status)
+        st.balloons()
 
 
-def frontend(parameter_file, args, share):
+def launch_streamlit(args):
+    sys.argv = ["streamlit", "run", "./ezdl/app/guicli.py"]
+    # cli_args = f'-- ' \
+    #            f'--f {args.file} ' \
+    #            f'--grid {args.grid} ' \
+    #            f'--run {args.run} ' \
+    #            f'--resume {args.resume} ' \
+    #            f'--dir {args.dir} ' \
+    #            f'--share {args.share}'
+    cli_args = ['--',
+                '--grid', str(args.grid),
+                '--run', str(args.run),
+                ]
+    if args.dir:
+        cli_args += ['--dir', args.dir]
+    if args.file:
+        cli_args += ['--file', args.file]
+    if args.resume:
+        cli_args += ['--resume']
+    if args.share:
+        cli_args += ['--share']
+
+    sys.argv += cli_args
+    sys.exit(stcli.main())
+
+
+def streamlit_entry(parameter_file, args, share):
     settings = ExpSettings(**args)
     Interface(parameter_file, settings, share)
+
+
+def frontend(args):
+    launch_streamlit(args)

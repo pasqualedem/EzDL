@@ -40,7 +40,8 @@ setuptools.setup(
         "wandb",
         "transformers",
         "einops",
-        "gradio",
+        "streamlit",
+        "streamlit-ace",
         "easydict",
     ]
 )
