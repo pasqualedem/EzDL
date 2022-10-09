@@ -1,8 +1,11 @@
+import sys
 import time
 
 import streamlit as st
+import streamlit.web.bootstrap as bootstrap
+from streamlit.web import cli as stcli
 
-from ezdl.app.markdown import title_builder, exp_summary_builder, grid_summary_builder, MkFailures, wandb_run_link
+from ezdl.app.markdown import exp_summary_builder, grid_summary_builder, MkFailures, wandb_run_link
 from ezdl.experiment.experiment import ExpSettings, Experimenter, Status
 
 from ezdl.utils.utilities import load_yaml
@@ -61,9 +64,12 @@ class Interface:
         self.mk_failures = None
         self.json = None
         if "experimenter" not in st.session_state:
-            st.session_state.experimenter = Experimenter()
-            st.session_state.experimenter.exp_settings.update(exp_settings)
-            st.session_state.mk_summary = exp_summary_builder(st.session_state.experimenter)
+            experimenter = Experimenter()
+            st.session_state.experimenter = experimenter
+            experimenter.exp_settings.update(exp_settings)
+            st.session_state.mk_summary = exp_summary_builder(experimenter)
+        else:
+            experimenter = st.session_state.experimenter
 
         st.set_page_config(
             layout="wide", page_icon="🖱️", page_title="EzDL"
@@ -72,7 +78,7 @@ class Interface:
         st.write(
             """Train your model!"""
         )
-        es = st.session_state.experimenter.exp_settings
+        es = experimenter.exp_settings
         with st.sidebar:
             with st.form("exp_form"):
                 self.form_path = st.text_input("Experiment name (path)", value=es.name)
@@ -93,7 +99,7 @@ class Interface:
                                                   ))
 
             self.parameter_file = st.file_uploader("Parameter file", on_change=set_file, key="parameter_file")
-        if submitted or st.session_state.parameter_file:
+        if submitted or ("parameter_file" in st.session_state and st.session_state.parameter_file):
             st.write("## ", f"{es.name} - {es.group}")
             with st.expander("Grid file"):
                 print(st.session_state.settings_string)
@@ -144,7 +150,40 @@ class Interface:
         st.balloons()
 
 
-def frontend(parameter_file, args, share):
+def launch_streamlit(args):
+    sys.argv = ["streamlit", "run", "./ezdl/app/guicli.py"]
+    # cli_args = f'-- ' \
+    #            f'--f {args.file} ' \
+    #            f'--grid {args.grid} ' \
+    #            f'--run {args.run} ' \
+    #            f'--resume {args.resume} ' \
+    #            f'--dir {args.dir} ' \
+    #            f'--share {args.share}'
+    cli_args = ['--',
+                '--grid', str(args.grid),
+                '--run', str(args.run),
+                ]
+    if args.dir:
+        cli_args += ['--dir', args.dir]
+    if args.file:
+        cli_args += ['--file', args.file]
+    if args.resume:
+        cli_args += ['--resume']
+    if args.share:
+        cli_args += ['--share']
+
+    sys.argv += cli_args
+    sys.exit(stcli.main())
+
+
+def streamlit_entry(parameter_file, args, share):
     settings = ExpSettings(**args)
     Interface(parameter_file, settings, share)
 
+
+def frontend(args):
+    launch_streamlit(args)
+
+# def frontend(parameter_file, args, share):
+#     settings = ExpSettings(**args)
+#     Interface(parameter_file, settings, share)
