@@ -73,7 +73,11 @@ class Run:
             checkpoint_path = None
             if 'epoch' in wandb_run.summary:
                 ckpt = 'ckpt_latest.pth' if 'train' in phases else 'ckpt_best.pth'
-                checkpoint_path = os.path.join(checkpoint_path_group, run_folder[0], 'files', ckpt)
+                try:
+                    checkpoint_path = os.path.join(checkpoint_path_group, run_folder[0], 'files', ckpt)
+                except IndexError:
+                    logger.error(f"{wandb_run.id} not found in {checkpoint_path_group}")
+                    raise ValueError(f"{wandb_run.id} not found in {checkpoint_path_group}")
             self.seg_trainer.init_model(self.params, True, checkpoint_path)
             self.seg_trainer.init_loggers({"in_params": self.params}, self.train_params, run_id=wandb_run.id)
         except Exception as e:
