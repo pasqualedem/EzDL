@@ -21,7 +21,7 @@ setuptools.setup(
     python_requires='>=3.7',                # Minimum version requirement of the package
     entry_points={
         "console_scripts": [
-            "ezdl=ezdl.cli:cli",
+            "ezdl=ezdl.cli:main",
         ]
     },
     install_requires=[

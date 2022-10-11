@@ -10,12 +10,12 @@ from ruamel.yaml.scanner import ScannerError
 from streamlit.web import cli as stcli
 from streamlit_ace import st_ace
 
-from app.utils import ManipulationInputs
+from ezdl.app.utils import ManipulationInputs
 from ezdl.app.markdown import exp_summary_builder, grid_summary_builder, MkFailures, wandb_run_link, format_to_delete
 from ezdl.experiment.experiment import ExpSettings, Experimenter, Status
 
 from ezdl.utils.utilities import load_yaml, dict_to_yaml, yaml_string_to_dict
-from wandb_manip import update_metadata, fix_string_param, remove_key, delete_files, delete_artifacts, update_config
+from ezdl.wandb_manip import update_metadata, fix_string_param, remove_key, delete_files, delete_artifacts, update_config
 
 STREAMLIT_AGGRID_URL = "https://github.com/PablocFonseca/streamlit-aggrid"
 
