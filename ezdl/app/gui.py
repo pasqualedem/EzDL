@@ -1,14 +1,11 @@
-import sys
-import time
-
-import numpy as np
-import pandas as pd
 import streamlit as st
 import wandb
-from ruamel.yaml import YAML
+import os
+
 from ruamel.yaml.scanner import ScannerError
-from streamlit.web import cli as stcli
 from streamlit_ace import st_ace
+from streamlit.web import bootstrap
+from streamlit import config as _config
 
 from ezdl.app.utils import ManipulationInputs
 from ezdl.app.markdown import exp_summary_builder, grid_summary_builder, MkFailures, wandb_run_link, format_to_delete
@@ -151,8 +148,6 @@ class Interface:
                 self.experiment()
 
     def manipulation_interface(self):
-        if "manip" not in st.session_state:
-            st.session_state.manip = ManipulationInputs()
         path = st.text_input("wandb experiment path")
         col1, col2 = st.columns(2)
         with col1:
@@ -180,9 +175,13 @@ class Interface:
         with col2:
             preview = st.button("Retrieve runs and preview")
 
-        st.session_state.manip.update(
+        manip = ManipulationInputs()
+        manip.update(
             path, filters, updated_config, updated_meta, to_delete, fix_string_params
         )
+
+        if "manip" not in st.session_state:
+            st.session_state.manip = manip
 
         if launch:
             self.manipulate()
@@ -270,9 +269,7 @@ class Interface:
 
 
 def launch_streamlit(args):
-    sys.argv = ["streamlit", "run", "./ezdl/app/guicli.py"]
-    cli_args = ['--',
-                '--grid', str(args.grid),
+    cli_args = ['--grid', str(args.grid),
                 '--run', str(args.run),
                 ]
     if args.dir:
@@ -282,8 +279,12 @@ def launch_streamlit(args):
     if args.resume:
         cli_args += ['--resume']
 
-    sys.argv += cli_args
-    sys.exit(stcli.main())
+    dirname = os.path.dirname(__file__)
+    filename = os.path.join(dirname, 'guicli.py')
+
+    _config.set_option("server.headless", True)
+    print(cli_args)
+    bootstrap.run(filename, '', cli_args, flag_options={})
 
 
 def streamlit_entry(parameter_file, args, share):
