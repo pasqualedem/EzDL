@@ -220,8 +220,10 @@ class Interface:
                     delete_artifacts(run, mp.artifacts_to_delete)
 
     def preview_manipulation(self):
-        api = wandb.Api()
         mp = st.session_state.manip
+        with open("log.txt") as log:
+            log.write(f"Filters: {mp.filters} path: {mp.path}")
+        api = wandb.Api()
         runs = api.runs(path=mp.path, filters=mp.filters)
         col1, col2 = st.columns([2, 1])
         with col1:
