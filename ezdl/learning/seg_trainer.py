@@ -26,7 +26,7 @@ from tqdm import tqdm
 from ezdl.learning.wandb_logger import WandBSGLogger
 from ezdl.callbacks import SegmentationVisualizationCallback
 from ezdl.models import MODELS as MODELS_DICT
-from ezdl.learning.wandb_logger import BaseSGLogger as BaseLogger
+from ezdl.learning.basesg_logger import BaseSGLogger as BaseLogger
 
 logger = get_logger(__name__)
 
@@ -203,19 +203,9 @@ class SegmentationTrainer(Trainer):
                    for i, (fpr, tpr) in enumerate(fpr_tpr)]
             cls = [item for sublist in cls for item in sublist]
             df = pd.DataFrame({'class': cls, 'fpr': fprs, 'tpr': tprs})
-            table = wandb.Table(columns=["class", "fpr", "tpr"], dataframe=df)
-            plt = wandb.plot_table(
-                "wandb/area-under-curve/v0",
-                table,
-                {"x": "fpr", "y": "tpr", "class": "class"},
-                {
-                    "title": "ROC",
-                    "x-axis-title": "False positive rate",
-                    "y-axis-title": "True positive rate",
-                },
-            )
+            name = "wandb/area-under-curve/v0"
+            self.sg_logger.add_plot("fpr", "tpr")
             logger.info('ROC curve computed.')
-            wandb.log({"roc": plt})
         return metrics
 
     def _init_monitored_items(self):
