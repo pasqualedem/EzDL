@@ -5,7 +5,8 @@ import os
 from super_gradients.common.abstractions.abstract_logger import get_logger
 from super_gradients.training.utils.callbacks import Phase
 
-from ezdl.callbacks import WandbCallback, SegmentationVisualizationCallback
+from ezdl.callbacks import MetricsLogCallback
+# from ezdl.callbacks import SegmentationVisualizationCallback
 from ezdl.experiment.parameters import parse_params
 from ezdl.learning.seg_trainer import SegmentationTrainer
 from ezdl.utils.utilities import dict_to_yaml_string, values_to_number, nested_dict_update
@@ -36,11 +37,12 @@ class Run:
             self.train_params, self.test_params, self.dataset_params, self.early_stop = parse_params(params)
             self.run_params = params.get('run_params') or {}
 
-            self.seg_trainer = SegmentationTrainer(experiment_name=params['experiment']['group'],
-                                                   ckpt_root_dir=params['experiment']['tracking_dir']
-                                                   if params['experiment']['tracking_dir'] else 'wandb')
+            self.seg_trainer = SegmentationTrainer(
+                experiment_name=params['experiment']['group'],
+                ckpt_root_dir=params['experiment']['tracking_dir'] or 'wandb',
+            )
             self.dataset = self.seg_trainer.init_dataset \
-                (params['dataset_interface'], dataset_params=self.dataset_params)
+                    (params['dataset_interface'], dataset_params=self.dataset_params)
             self.seg_trainer.init_model(params, False, None)
             self.seg_trainer.init_loggers({"in_params": params}, self.train_params)
             logger.info(f"Input params: \n\n {dict_to_yaml_string(params)}")
@@ -103,14 +105,14 @@ class Run:
 def train(seg_trainer, train_params, dataset, early_stop):
     # Callbacks
     cbcks = [
-        WandbCallback(Phase.TRAIN_EPOCH_END, freq=1),
-        WandbCallback(Phase.VALIDATION_EPOCH_END, freq=1),
-        SegmentationVisualizationCallback(phase=Phase.VALIDATION_BATCH_END,
-                                          freq=1,
-                                          batch_idxs=[0, len(seg_trainer.train_loader) - 1],
-                                          last_img_idx_in_batch=4,
-                                          num_classes=dataset.trainset.CLASS_LABELS,
-                                          undo_preprocessing=dataset.undo_preprocess),
+        MetricsLogCallback(Phase.TRAIN_EPOCH_END, freq=1),
+        MetricsLogCallback(Phase.VALIDATION_EPOCH_END, freq=1),
+        # SegmentationVisualizationCallback(phase=Phase.VALIDATION_BATCH_END,
+        #                                   freq=1,
+        #                                   batch_idxs=[0, len(seg_trainer.train_loader) - 1],
+        #                                   last_img_idx_in_batch=4,
+        #                                   num_classes=dataset.trainset.CLASS_LABELS,
+        #                                   undo_preprocessing=dataset.undo_preprocess),
         *early_stop
     ]
     train_params["phase_callbacks"] = cbcks

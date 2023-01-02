@@ -4,6 +4,7 @@ import signal
 import time
 from typing import Union, Any
 
+import pandas as pd
 import psutil
 import torch
 from PIL import Image
@@ -14,8 +15,10 @@ from super_gradients.common.environment.env_helpers import multi_process_safe
 from super_gradients.common.sg_loggers.abstract_sg_logger import AbstractSGLogger
 from super_gradients.training.params import TrainingParams
 from super_gradients.training.utils import sg_trainer_utils
+from super_gradients.common.abstractions.abstract_logger import get_logger
 
-from learning.wandb_logger import logger
+
+logger = get_logger(__name__)
 
 
 class BaseSGLogger(AbstractSGLogger):
@@ -262,6 +265,10 @@ class BaseSGLogger(AbstractSGLogger):
             logger.info("Checkpoint saved in " + path)
         if self.save_checkpoints_remote:
             self.model_checkpoints_data_interface.save_remote_checkpoints_file(self.experiment_name, self._local_dir, name)
+
+    @multi_process_safe
+    def add_plot(self, tag: str, values, xtitle, ytitle, classes_marker=None):
+        pass
 
     def add(self, tag: str, obj: Any, global_step: int = None):
         pass

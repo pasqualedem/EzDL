@@ -53,7 +53,11 @@ class ClearMLLogger(BaseSGLogger):
         self.resumed = resumed
         resume = 'must' if resumed else None
         os.makedirs(checkpoints_dir_path, exist_ok=True)
-        self.run = Task.init(project_name=project_name, task_name=experiment_name, continue_last_task=resume)
+        self.run = Task.init(project_name=project_name,
+                             task_name=experiment_name,
+                             auto_connect_frameworks=False,
+                             continue_last_task=resume,
+                             )
         if save_code:
             self._save_code()
 
@@ -69,7 +73,7 @@ class ClearMLLogger(BaseSGLogger):
 
     @multi_process_safe
     def add_scalar(self, tag: str, scalar_value: float, global_step: int = 0):
-        self.run.get_logger().report_scalar(title=tag, value=scalar_value, iteration=global_step)
+        self.run.get_logger().report_scalar(title=tag, series=tag, value=scalar_value, iteration=global_step)
 
     @multi_process_safe
     def add_scalars(self, tag_scalar_dict: dict, global_step: int = 0):
@@ -113,8 +117,8 @@ class ClearMLLogger(BaseSGLogger):
     def add_plot(self, tag: str, values: pd.DataFrame, xtitle, ytitle, classes_marker=None):
 
         if classes_marker:
-            for cls in classes_marker:
-                scatter2d = values[values == cls].values
+            for cls in values[classes_marker].unique():
+                scatter2d = values[values[classes_marker] == cls].loc[:, values.columns != classes_marker].values
 
                 self.run.get_logger().current_logger().report_scatter2d(
                     tag,
@@ -148,21 +152,15 @@ class ClearMLLogger(BaseSGLogger):
 
     @multi_process_safe
     def add_summary(self, metrics: dict):
-        for name, value in metrics:
+        for name, value in metrics.items():
             self.run.get_logger().report_single_value(name=name, value=value)
 
     @multi_process_safe
     def add_checkpoint(self, tag: str, state_dict: dict, global_step: int = 0):
-        name = f'ckpt.pth' if tag is None else tag
+        name = 'ckpt.pth' if tag is None else tag
         if not name.endswith('.pth'):
             name += '.pth'
-        models = self.run.get_models()['output']
-        model = list(filter(lambda x: x.name == name, models))
-        if len(model) > 0:
-            model = model[0]
-        else:
-            model = OutputModel(task=self.run, name=name)
-
+        model = OutputModel(task=self.run, name=name)
         path = os.path.join(self._local_dir, name)
         torch.save(state_dict, path)
         model.update_weights(weights_filename=path, iteration=global_step)

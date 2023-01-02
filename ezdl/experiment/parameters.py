@@ -36,7 +36,7 @@ def parse_params(params: dict) -> (dict, dict, dict, list):
         "valid_metrics_list": list(test_metrics.values()),
         "loss": loss,
         "loss_logging_items_names": ["loss"],
-        "sg_logger": WandBSGLogger,
+        "sg_logger": params['experiment']['logger'],
         'sg_logger_params': {
             'entity': params['experiment']['entity'],
             'tags': params['tags'],
