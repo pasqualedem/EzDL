@@ -1,22 +1,15 @@
-import json
 import os
-import signal
-import time
-from typing import Optional, Union, Any
+from typing import Optional, Union
 
 import pandas as pd
-import psutil
+import adjectiveanimalnumber as aan
 import torch
 
 from PIL import Image
 from flatbuffers.builder import np
 from matplotlib import pyplot as plt
-from super_gradients.common import ADNNModelRepositoryDataInterfaces
 from super_gradients.common.abstractions.abstract_logger import get_logger
 from super_gradients.common.environment.env_helpers import multi_process_safe
-from super_gradients.common.sg_loggers.abstract_sg_logger import AbstractSGLogger
-from super_gradients.training.params import TrainingParams
-from super_gradients.training.utils import sg_trainer_utils
 from clearml import Task, OutputModel
 
 from ezdl.learning.basesg_logger import BaseSGLogger
@@ -53,6 +46,11 @@ class ClearMLLogger(BaseSGLogger):
         self.resumed = resumed
         resume = 'must' if resumed else None
         os.makedirs(checkpoints_dir_path, exist_ok=True)
+        if kwargs.get("group"):
+            project_name = f"{project_name}/{kwargs.get('group')}"
+        if not experiment_name:
+            experiment_name = aan.generate()
+
         self.run = Task.init(project_name=project_name,
                              task_name=experiment_name,
                              auto_connect_frameworks=False,

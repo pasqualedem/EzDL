@@ -4,7 +4,6 @@ import signal
 import time
 from typing import Union, Any
 
-import pandas as pd
 import psutil
 import torch
 from PIL import Image

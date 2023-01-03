@@ -25,6 +25,7 @@ setuptools.setup(
         ]
     },
     install_requires=[
+        "adjectiveanimalnumber",
         "click",
         "matplotlib",
         "numpy",
