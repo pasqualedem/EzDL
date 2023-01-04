@@ -5,10 +5,9 @@ import os
 from super_gradients.common.abstractions.abstract_logger import get_logger
 from super_gradients.training.utils.callbacks import Phase
 
-from ezdl.callbacks import MetricsLogCallback, SegmentationVisualizationCallback
-# from ezdl.callbacks import SegmentationVisualizationCallback
+from ezdl.callbacks import MetricsLogCallback, callback_factory
 from ezdl.experiment.parameters import parse_params
-from ezdl.learning.seg_trainer import SegmentationTrainer
+from ezdl.experiment.seg_trainer import SegmentationTrainer
 from ezdl.utils.utilities import dict_to_yaml_string, values_to_number, nested_dict_update
 
 logger = get_logger(__name__)
@@ -18,7 +17,9 @@ class Run:
     def __init__(self):
         self.params = None
         self.dataset = None
-        self.early_stop = None
+        self.train_callbacks = None
+        self.val_callbacks = None
+        self.test_callbacks = None
         self.dataset_params = None
         self.seg_trainer = None
         self.train_params = None
@@ -34,7 +35,8 @@ class Run:
             self.params = params
             self.phases = params['phases']
 
-            self.train_params, self.test_params, self.dataset_params, self.early_stop = parse_params(params)
+            self.train_params, self.test_params, self.dataset_params, callbacks = parse_params(params)
+            self.train_callbacks, self.val_callbacks, self.test_callbacks = callbacks
             self.run_params = params.get('run_params') or {}
 
             self.seg_trainer = SegmentationTrainer(
@@ -42,7 +44,7 @@ class Run:
                 ckpt_root_dir=params['experiment']['tracking_dir'] or 'wandb',
             )
             self.dataset = self.seg_trainer.init_dataset \
-                    (params['dataset_interface'], dataset_params=self.dataset_params)
+                (params['dataset_interface'], dataset_params=self.dataset_params)
             self.seg_trainer.init_model(params, False, None)
             self.seg_trainer.init_loggers({"in_params": params}, self.train_params)
             logger.info(f"Input params: \n\n {dict_to_yaml_string(params)}")
@@ -62,14 +64,15 @@ class Run:
             self.phases = phases
             wandb_run.config['in_params'] = self.params
             wandb_run.update()
-            self.train_params, self.test_params, self.dataset_params, self.early_stop = parse_params(self.params)
+            self.train_params, self.test_params, self.dataset_params, callbacks = parse_params(self.params)
+            self.train_callbacks, self.val_callbacks, self.test_callbacks = callbacks
 
             self.seg_trainer = SegmentationTrainer(
                 experiment_name=self.params['experiment']['group'],
                 ckpt_root_dir=self.params['experiment']['tracking_dir'] or 'wandb',
             )
             self.dataset = self.seg_trainer.init_dataset \
-                            (wandb_run.config['in_params']['dataset_interface'], dataset_params=self.dataset_params)
+                (wandb_run.config['in_params']['dataset_interface'], dataset_params=self.dataset_params)
             track_dir = wandb_run.config.get('in_params').get('experiment').get('tracking_dir') or 'wandb'
             checkpoint_path_group = os.path.join(track_dir, wandb_run.group, 'wandb')
             run_folder = list(filter(lambda x: str(wandb_run.id) in x, os.listdir(checkpoint_path_group)))
@@ -93,10 +96,10 @@ class Run:
     def launch(self):
         try:
             if 'train' in self.phases:
-                train(self.seg_trainer, self.train_params, self.dataset, self.early_stop)
+                train(self.seg_trainer, self.train_params, self.dataset, self.train_callbacks, self.val_callbacks)
 
             if 'test' in self.phases:
-                test_metrics = self.seg_trainer.test(**self.test_params)
+                test_metrics = self.seg_trainer.test(**self.test_params, test_phase_callbacks=self.test_callbacks)
 
             if 'inference' in self.phases:
                 inference(self.seg_trainer, self.run_params, self.dataset)
@@ -105,19 +108,16 @@ class Run:
                 self.seg_trainer.sg_logger.close(True)
 
 
-def train(seg_trainer, train_params, dataset, early_stop):
+def train(seg_trainer, train_params, dataset, train_callbacks, val_callbacks):
     # Callbacks
+
+    cbcks = [callback_factory(name, params, seg_trainer=seg_trainer, dataset=dataset, loader=dataset.train_loader)
+             for name, params in {**train_callbacks, **val_callbacks}.items()
+             ]
     cbcks = [
         MetricsLogCallback(Phase.TRAIN_EPOCH_END, freq=1),
         MetricsLogCallback(Phase.VALIDATION_EPOCH_END, freq=1),
-        SegmentationVisualizationCallback(logger=seg_trainer.sg_logger,
-                                          phase=Phase.VALIDATION_BATCH_END,
-                                          freq=1,
-                                          batch_idxs=[0, len(seg_trainer.train_loader) - 1],
-                                          last_img_idx_in_batch=4,
-                                          num_classes=dataset.trainset.CLASS_LABELS,
-                                          undo_preprocessing=dataset.undo_preprocess),
-        *early_stop
+        *cbcks
     ]
     train_params["phase_callbacks"] = cbcks
 

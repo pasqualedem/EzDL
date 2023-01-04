@@ -13,7 +13,7 @@ from super_gradients.common.abstractions.abstract_logger import get_logger
 from super_gradients.common.environment.env_helpers import multi_process_safe
 from clearml import Task, OutputModel
 
-from ezdl.learning.basesg_logger import BaseSGLogger
+from ezdl.logger.basesg_logger import BaseSGLogger
 from ezdl.utils.segmentation import tensor_to_segmentation_image
 
 logger = get_logger(__name__)

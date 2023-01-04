@@ -1,11 +1,30 @@
 import os
 from typing import Union, Callable, Mapping, Any, List
 
-import numpy as np
-import torch
-from super_gradients.training.utils.callbacks import PhaseCallback, Phase, PhaseContext
+from super_gradients.training.utils.callbacks import *
+from super_gradients.training.utils.early_stopping import EarlyStop
 from super_gradients.training.utils.utils import AverageMeter
 from PIL import ImageColor, Image
+
+
+def callback_factory(name, params, **kwargs):
+    params = params or {}
+    if name in ['early_stop', 'early_stopping', 'EarlyStop']:
+        return EarlyStop(Phase.VALIDATION_EPOCH_END, **params)
+    if name == "SegmentationVisualizationCallback":
+        seg_trainer = kwargs['seg_trainer']
+        loader = kwargs['loader']
+        dataset = kwargs['dataset']
+        return SegmentationVisualizationCallback(logger=seg_trainer.sg_logger,
+                                                 phase=Phase.VALIDATION_BATCH_END,
+                                                 batch_idxs=[0, len(loader) - 1],
+                                                 last_img_idx_in_batch=4,
+                                                 num_classes=dataset.trainset.CLASS_LABELS,
+                                                 undo_preprocessing=dataset.undo_preprocess,
+                                                 **params)
+    if params.get("phase"):
+        params['phase'] = Phase.__dict__[params.get("phase")]
+    return globals()[name](**params)
 
 
 class SegmentationVisualizationCallback(PhaseCallback):
@@ -69,15 +88,15 @@ class SegmentationVisualization:
         image_np = np.moveaxis(image_np.numpy(), 0, -1)
 
         return image_np, {
-                "predictions": {
-                    "mask_data": pred_mask.numpy(),
-                    "class_labels": classes,
-                },
-                "ground_truth": {
-                    "mask_data": target_mask.numpy(),
-                    "class_labels": classes,
-                },
-            }
+            "predictions": {
+                "mask_data": pred_mask.numpy(),
+                "class_labels": classes,
+            },
+            "ground_truth": {
+                "mask_data": target_mask.numpy(),
+                "class_labels": classes,
+            },
+        }
 
     @staticmethod
     def visualize_batch(logger, image_tensor: torch.Tensor, pred_mask: torch.Tensor, target_mask: torch.Tensor,

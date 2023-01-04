@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 from super_gradients.common.abstractions.abstract_logger import get_logger
 from super_gradients.common.environment.env_helpers import multi_process_safe
 
-from learning.basesg_logger import BaseSGLogger
+from ezdl.logger.basesg_logger import BaseSGLogger
 
 logger = get_logger(__name__)
 

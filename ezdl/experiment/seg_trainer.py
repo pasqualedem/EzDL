@@ -5,7 +5,7 @@ from typing import Mapping
 import pandas as pd
 from super_gradients.common import MultiGPUMode
 
-from callbacks import SegmentationVisualizationCallback
+from ezdl.callbacks import SegmentationVisualizationCallback, callback_factory
 from ezdl.utils.utilities import get_module_class_from_path
 from piptools.scripts.sync import _get_installed_distributions
 
@@ -25,8 +25,8 @@ from tqdm import tqdm
 
 # from ezdl.callbacks import SegmentationVisualizationCallback
 from ezdl.models import MODELS as MODELS_DICT
-from ezdl.learning.basesg_logger import BaseSGLogger as BaseLogger
-from ezdl.learning import LOGGERS
+from ezdl.logger.basesg_logger import BaseSGLogger as BaseLogger
+from ezdl.logger import LOGGERS
 
 logger = get_logger(__name__)
 
@@ -138,7 +138,7 @@ class SegmentationTrainer(Trainer):
              loss: torch.nn.modules.loss._Loss = None,
              silent_mode: bool = False,
              test_metrics: Mapping = None,
-             loss_logging_items_names=None, metrics_progress_verbose=False, test_phase_callbacks=(),
+             loss_logging_items_names=None, metrics_progress_verbose=False, test_phase_callbacks={},
              use_ema_net=True) -> dict:
         """
         Evaluates the model on given dataloader and metrics.
@@ -158,14 +158,8 @@ class SegmentationTrainer(Trainer):
         loss = loss or self.training_params.loss
         if loss is not None:
             loss.to(self.device)
-        test_phase_callbacks = list(test_phase_callbacks) + [
-            SegmentationVisualizationCallback(logger=self.sg_logger,
-                                              phase=Phase.TEST_BATCH_END,
-                                              freq=5,
-                                              batch_idxs=list(range(test_loader.__len__())),
-                                              num_classes=self.dataset_interface.trainset.CLASS_LABELS,
-                                              undo_preprocessing=self.dataset_interface.undo_preprocess)
-        ]
+        test_phase_callbacks = [callback_factory(name, params, seg_trainer=self, dataset=self.dataset_interface, loader=test_loader)
+                                for name, params in test_phase_callbacks.items()]
         metrics_values = super().test(model=self.net,
                                       test_loader=test_loader,
                                       loss=loss,

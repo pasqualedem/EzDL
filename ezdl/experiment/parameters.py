@@ -3,7 +3,6 @@ import torch
 from super_gradients.training.utils.callbacks import Phase
 from super_gradients.training.utils.early_stopping import EarlyStop
 
-from ezdl.learning.wandb_logger import WandBSGLogger
 from ezdl.loss import LOSSES as LOSSES_DICT
 from ezdl.metrics import metrics_factory
 from ezdl.utils.utilities import recursive_get
@@ -48,8 +47,13 @@ def parse_params(params: dict) -> (dict, dict, dict, list):
         "test_metrics": test_metrics,
     }
 
-    # early stopping
-    early_stop = [EarlyStop(Phase.VALIDATION_EPOCH_END, **params['early_stopping']['params'])] \
-        if params['early_stopping']['enabled'] else []
+    # callbacks
+    train_callbacks = params.get('train_callbacks') or {}
+    test_callbacks = params.get('test_callbacks') or {}
+    val_callbacks = params.get('val_callbacks') or {}
 
-    return train_params, test_params, dataset_params, early_stop
+    # early stopping
+    if params.get('early_stopping'):
+        val_callbacks['early_stopping'] = params.get('early_stopping')
+
+    return train_params, test_params, dataset_params, (train_callbacks, test_callbacks, val_callbacks)
