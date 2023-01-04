@@ -51,6 +51,7 @@ class BaseSGLogger(AbstractSGLogger):
         :param save_logs_remote: Saves log files in s3.
         """
         super().__init__()
+        self.sequences = {}
         self.project_name = project_name
         self.experiment_name = experiment_name
         self.storage_location = storage_location

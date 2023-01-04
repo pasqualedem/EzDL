@@ -177,6 +177,10 @@ class WandBSGLogger(BaseSGLogger):
         wandb.log({tag: figure}, step=global_step)
 
     @multi_process_safe
+    def add_mask(self, tag: str, image, mask_dict, global_step: int = 0):
+        wandb.log({tag: wandb.Image(image, masks=mask_dict)}, step=global_step)
+
+    @multi_process_safe
     def add_table(self, tag, data, columns, rows):
         if isinstance(data, torch.Tensor):
             data = [[x.item() for x in row] for row in data]
@@ -291,6 +295,15 @@ class WandBSGLogger(BaseSGLogger):
             return None
 
         return None
+
+    def create_image_mask_sequence(self, name):
+        self.sequences[name] = wandb.Table(["ID", "Image"])
+
+    def add_image_mask_to_sequence(self, sequence_name, name, image, mask_dict):
+        self.sequences[sequence_name].add_data(name, wandb.Image(image, masks=mask_dict))
+
+    def add_image_mask_sequence(self, name):
+        wandb.log({name: self.sequences[name]})
 
     def __repr__(self):
         return "WandbSGLogger"

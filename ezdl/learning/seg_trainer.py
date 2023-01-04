@@ -5,6 +5,7 @@ from typing import Mapping
 import pandas as pd
 from super_gradients.common import MultiGPUMode
 
+from callbacks import SegmentationVisualizationCallback
 from ezdl.utils.utilities import get_module_class_from_path
 from piptools.scripts.sync import _get_installed_distributions
 
@@ -158,11 +159,12 @@ class SegmentationTrainer(Trainer):
         if loss is not None:
             loss.to(self.device)
         test_phase_callbacks = list(test_phase_callbacks) + [
-            # SegmentationVisualizationCallback(phase=Phase.TEST_BATCH_END,
-            #                                   freq=5,
-            #                                   batch_idxs=list(range(test_loader.__len__())),
-            #                                   num_classes=self.dataset_interface.trainset.CLASS_LABELS,
-            #                                   undo_preprocessing=self.dataset_interface.undo_preprocess)
+            SegmentationVisualizationCallback(logger=self.sg_logger,
+                                              phase=Phase.TEST_BATCH_END,
+                                              freq=5,
+                                              batch_idxs=list(range(test_loader.__len__())),
+                                              num_classes=self.dataset_interface.trainset.CLASS_LABELS,
+                                              undo_preprocessing=self.dataset_interface.undo_preprocess)
         ]
         metrics_values = super().test(model=self.net,
                                       test_loader=test_loader,

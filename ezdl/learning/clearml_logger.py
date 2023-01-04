@@ -2,6 +2,7 @@ import os
 from typing import Optional, Union
 
 import pandas as pd
+import plotly.express as px
 import adjectiveanimalnumber as aan
 import torch
 
@@ -13,6 +14,7 @@ from super_gradients.common.environment.env_helpers import multi_process_safe
 from clearml import Task, OutputModel
 
 from ezdl.learning.basesg_logger import BaseSGLogger
+from ezdl.utils.segmentation import tensor_to_segmentation_image
 
 logger = get_logger(__name__)
 
@@ -163,6 +165,21 @@ class ClearMLLogger(BaseSGLogger):
         torch.save(state_dict, path)
         model.update_weights(weights_filename=path, iteration=global_step)
 
+    @multi_process_safe
+    def add_mask(self, tag: str, image, mask_dict, global_step: int = 0):
+        predictions = tensor_to_segmentation_image(mask_dict['predictions']['mask_data'],
+                                                   labels=mask_dict['predictions']['class_labels'])
+        ground_truth = tensor_to_segmentation_image(mask_dict['ground_truth']['mask_data'],
+                                                    labels=mask_dict['ground_truth']['class_labels'])
+        data = np.stack([image, predictions, ground_truth])
+        fig = px.imshow(data, facet_col=0)
+        annotations = ["image", "predictions", "ground_truth"]
+        for k in range(len(annotations)):
+            fig.layout.annotations[k].update(text=annotations[k])
+        self.run.get_logger().report_plotly(
+            title=tag, series=tag, iteration=global_step, figure=fig
+        )
+
     def _get_tensorboard_file_name(self):
         try:
             tb_file_path = self.tensorboard_writer.file_writer.event_writer._file_name
@@ -191,6 +208,15 @@ class ClearMLLogger(BaseSGLogger):
             return None
 
         return None
+
+    def create_image_mask_sequence(self, name):
+        pass
+
+    def add_image_mask_to_sequence(self, sequence_name, name, image, mask_dict):
+        self.add_mask(name, image, mask_dict)
+
+    def add_image_mask_sequence(self, name):
+        pass
 
     def __repr__(self):
         return "ClearMLLogger"

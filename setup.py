@@ -30,6 +30,7 @@ setuptools.setup(
         "matplotlib",
         "numpy",
         "opencv-python",
+        "plotly",
         "Pillow",
         "ruamel.yaml",
         "scipy",

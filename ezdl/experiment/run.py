@@ -5,7 +5,7 @@ import os
 from super_gradients.common.abstractions.abstract_logger import get_logger
 from super_gradients.training.utils.callbacks import Phase
 
-from ezdl.callbacks import MetricsLogCallback
+from ezdl.callbacks import MetricsLogCallback, SegmentationVisualizationCallback
 # from ezdl.callbacks import SegmentationVisualizationCallback
 from ezdl.experiment.parameters import parse_params
 from ezdl.learning.seg_trainer import SegmentationTrainer
@@ -56,19 +56,20 @@ class Run:
         try:
             try:
                 self.params = values_to_number(wandb_run.config['in_params'])
-            except KeyError:
-                raise RuntimeError("No params recorded for run, just delete it!")
+            except KeyError as e:
+                raise RuntimeError("No params recorded for run, just delete it!") from e
             self.params = nested_dict_update(self.params, updated_config)
             self.phases = phases
             wandb_run.config['in_params'] = self.params
             wandb_run.update()
             self.train_params, self.test_params, self.dataset_params, self.early_stop = parse_params(self.params)
 
-            self.seg_trainer = SegmentationTrainer(experiment_name=self.params['experiment']['group'],
-                                                   ckpt_root_dir=self.params['experiment']['tracking_dir']
-                                                   if self.params['experiment']['tracking_dir'] else 'wandb')
+            self.seg_trainer = SegmentationTrainer(
+                experiment_name=self.params['experiment']['group'],
+                ckpt_root_dir=self.params['experiment']['tracking_dir'] or 'wandb',
+            )
             self.dataset = self.seg_trainer.init_dataset \
-                (wandb_run.config['in_params']['dataset_interface'], dataset_params=self.dataset_params)
+                            (wandb_run.config['in_params']['dataset_interface'], dataset_params=self.dataset_params)
             track_dir = wandb_run.config.get('in_params').get('experiment').get('tracking_dir') or 'wandb'
             checkpoint_path_group = os.path.join(track_dir, wandb_run.group, 'wandb')
             run_folder = list(filter(lambda x: str(wandb_run.id) in x, os.listdir(checkpoint_path_group)))
@@ -77,9 +78,11 @@ class Run:
                 ckpt = 'ckpt_latest.pth' if 'train' in phases else 'ckpt_best.pth'
                 try:
                     checkpoint_path = os.path.join(checkpoint_path_group, run_folder[0], 'files', ckpt)
-                except IndexError:
+                except IndexError as exc:
                     logger.error(f"{wandb_run.id} not found in {checkpoint_path_group}")
-                    raise ValueError(f"{wandb_run.id} not found in {checkpoint_path_group}")
+                    raise ValueError(
+                        f"{wandb_run.id} not found in {checkpoint_path_group}"
+                    ) from exc
             self.seg_trainer.init_model(self.params, True, checkpoint_path)
             self.seg_trainer.init_loggers({"in_params": self.params}, self.train_params, run_id=wandb_run.id)
         except Exception as e:
@@ -107,12 +110,13 @@ def train(seg_trainer, train_params, dataset, early_stop):
     cbcks = [
         MetricsLogCallback(Phase.TRAIN_EPOCH_END, freq=1),
         MetricsLogCallback(Phase.VALIDATION_EPOCH_END, freq=1),
-        # SegmentationVisualizationCallback(phase=Phase.VALIDATION_BATCH_END,
-        #                                   freq=1,
-        #                                   batch_idxs=[0, len(seg_trainer.train_loader) - 1],
-        #                                   last_img_idx_in_batch=4,
-        #                                   num_classes=dataset.trainset.CLASS_LABELS,
-        #                                   undo_preprocessing=dataset.undo_preprocess),
+        SegmentationVisualizationCallback(logger=seg_trainer.sg_logger,
+                                          phase=Phase.VALIDATION_BATCH_END,
+                                          freq=1,
+                                          batch_idxs=[0, len(seg_trainer.train_loader) - 1],
+                                          last_img_idx_in_batch=4,
+                                          num_classes=dataset.trainset.CLASS_LABELS,
+                                          undo_preprocessing=dataset.undo_preprocess),
         *early_stop
     ]
     train_params["phase_callbacks"] = cbcks
