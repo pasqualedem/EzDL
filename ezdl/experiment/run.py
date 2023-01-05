@@ -4,6 +4,7 @@ import os
 
 from super_gradients.common.abstractions.abstract_logger import get_logger
 from super_gradients.training.utils.callbacks import Phase
+from copy import deepcopy
 
 from ezdl.callbacks import MetricsLogCallback, callback_factory
 from ezdl.experiment.parameters import parse_params
@@ -29,29 +30,33 @@ class Run:
         if '.' not in sys.path:
             sys.path.extend('.')
 
+    def parse_params(self, params):
+        self.params = deepcopy(params)
+        self.phases = params['phases']
+
+        self.train_params, self.test_params, self.dataset_params, callbacks = parse_params(self.params)
+        self.train_callbacks, self.val_callbacks, self.test_callbacks = callbacks
+        self.run_params = params.get('run_params') or {}
+
     def init(self, params: dict):
         self.seg_trainer = None
         try:
-            self.params = params
-            self.phases = params['phases']
-
-            self.train_params, self.test_params, self.dataset_params, callbacks = parse_params(params)
-            self.train_callbacks, self.val_callbacks, self.test_callbacks = callbacks
-            self.run_params = params.get('run_params') or {}
-
+            self.parse_params(params)
             self.seg_trainer = SegmentationTrainer(
-                experiment_name=params['experiment']['group'],
-                ckpt_root_dir=params['experiment']['tracking_dir'] or 'wandb',
+                experiment_name=self.params['experiment']['group'],
+                ckpt_root_dir=self.params['experiment']['tracking_dir'] or 'wandb',
             )
             self.dataset = self.seg_trainer.init_dataset \
-                (params['dataset_interface'], dataset_params=self.dataset_params)
+                    (params['dataset_interface'], dataset_params=deepcopy(self.dataset_params))
             self.seg_trainer.init_model(params, False, None)
-            self.seg_trainer.init_loggers({"in_params": params}, self.train_params)
+            self.seg_trainer.init_loggers({"in_params": params}, deepcopy(self.train_params))
             logger.info(f"Input params: \n\n {dict_to_yaml_string(params)}")
         except Exception as e:
-            if self.seg_trainer is not None:
-                if self.seg_trainer.sg_logger is not None:
-                    self.seg_trainer.sg_logger.close(True)
+            if (
+                self.seg_trainer is not None
+                and self.seg_trainer.sg_logger is not None
+            ):
+                self.seg_trainer.sg_logger.close(True)
             raise e
 
     def resume(self, wandb_run, updated_config, phases):
@@ -72,7 +77,7 @@ class Run:
                 ckpt_root_dir=self.params['experiment']['tracking_dir'] or 'wandb',
             )
             self.dataset = self.seg_trainer.init_dataset \
-                (wandb_run.config['in_params']['dataset_interface'], dataset_params=self.dataset_params)
+                (wandb_run.config['in_params']['dataset_interface'], dataset_params=deepcopy(self.dataset_params))
             track_dir = wandb_run.config.get('in_params').get('experiment').get('tracking_dir') or 'wandb'
             checkpoint_path_group = os.path.join(track_dir, wandb_run.group, 'wandb')
             run_folder = list(filter(lambda x: str(wandb_run.id) in x, os.listdir(checkpoint_path_group)))

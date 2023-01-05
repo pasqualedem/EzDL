@@ -10,7 +10,7 @@ from PIL import Image
 from flatbuffers.builder import np
 from matplotlib import pyplot as plt
 from super_gradients.common import ADNNModelRepositoryDataInterfaces
-from super_gradients.common.environment.env_helpers import multi_process_safe
+from super_gradients.common.environment.ddp_utils import multi_process_safe
 from super_gradients.common.sg_loggers.abstract_sg_logger import AbstractSGLogger
 from super_gradients.training.params import TrainingParams
 from super_gradients.training.utils import sg_trainer_utils

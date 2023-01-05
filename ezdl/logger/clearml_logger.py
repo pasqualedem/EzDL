@@ -3,6 +3,7 @@ from typing import Optional, Union
 
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import adjectiveanimalnumber as aan
 import torch
 
@@ -10,7 +11,7 @@ from PIL import Image
 from flatbuffers.builder import np
 from matplotlib import pyplot as plt
 from super_gradients.common.abstractions.abstract_logger import get_logger
-from super_gradients.common.environment.env_helpers import multi_process_safe
+from super_gradients.common.environment.ddp_utils import multi_process_safe
 from clearml import Task, OutputModel
 
 from ezdl.logger.basesg_logger import BaseSGLogger
@@ -169,13 +170,18 @@ class ClearMLLogger(BaseSGLogger):
     def add_mask(self, tag: str, image, mask_dict, global_step: int = 0):
         predictions = tensor_to_segmentation_image(mask_dict['predictions']['mask_data'],
                                                    labels=mask_dict['predictions']['class_labels'])
-        ground_truth = tensor_to_segmentation_image(mask_dict['ground_truth']['mask_data'],
-                                                    labels=mask_dict['ground_truth']['class_labels'])
+        ground_truth, cmap = tensor_to_segmentation_image(mask_dict['ground_truth']['mask_data'],
+                                                    labels=mask_dict['ground_truth']['class_labels'], return_cmap=True)
+        cmap = {name: '#%02x%02x%02x' % (c[0], c[1], c[2]) for name, c in cmap.items()}
         data = np.stack([image, predictions, ground_truth])
-        fig = px.imshow(data, facet_col=0)
+        fig = px.imshow(data, facet_col=0, title=tag)
         annotations = ["image", "predictions", "ground_truth"]
         for k in range(len(annotations)):
             fig.layout.annotations[k].update(text=annotations[k])
+        fig.add_traces([
+            go.Scatter(x=[None], y=[None], name=name, mode='markers', marker=dict(color=color, size=1))
+            for name, color in cmap.items()
+        ])
         self.run.get_logger().report_plotly(
             title=tag, series=tag, iteration=global_step, figure=fig
         )

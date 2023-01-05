@@ -1,6 +1,5 @@
 import importlib
-import os
-from typing import Mapping
+from typing import Mapping, Dict
 
 import pandas as pd
 from super_gradients.common import MultiGPUMode
@@ -51,7 +50,7 @@ class SegmentationTrainer(Trainer):
             pass
         else:
             raise ValueError("Dataset interface should be str or class")
-        data_loader_num_workers = dataset_params['num_workers']
+        data_loader_num_workers = dataset_params.get('num_workers') or 0
         self.connect_dataset_interface(dataset_interface, data_loader_num_workers)
         return self.dataset_interface
 
@@ -123,8 +122,9 @@ class SegmentationTrainer(Trainer):
                       training_params=training_params,
                       train_loader=self.train_loader,
                       valid_loader=self.valid_loader)
-        if self.train_loader.num_workers > 0:
+        if self.train_loader.num_workers > 0 and self.train_loader._iterator is not None:
             self.train_loader._iterator._shutdown_workers()
+        if self.valid_loader.num_workers > 0 and self.valid_loader._iterator is not None:
             self.valid_loader._iterator._shutdown_workers()
         # Restore best parameters
         self.checkpoint = load_checkpoint_to_model(ckpt_local_path=self.checkpoints_dir_path + '/ckpt_best.pth',
@@ -211,7 +211,7 @@ class SegmentationTrainer(Trainer):
                 raise ValueError(f"Specify which loss {self.loss_logging_items_names} to watch")
         return super()._init_monitored_items()
 
-    def _initialize_sg_logger_objects(self):
+    def _initialize_sg_logger_objects(self, additional_configs_to_log: Dict = None):
         if not self.train_initialized:
             self.train_initialized = True
             # OVERRIDE SOME PARAMETERS TO MAKE SURE THEY MATCH THE TRAINING PARAMETERS
@@ -227,7 +227,7 @@ class SegmentationTrainer(Trainer):
             sg_logger = core_utils.get_param(self.training_params, 'sg_logger')
 
             if sg_logger is None:
-                raise RuntimeError('sg_logger must be defined in training params (see default_training_params)')
+                raise RuntimeError('logger must be defined in experiment params (see default_training_params)')
 
             if isinstance(sg_logger, AbstractSGLogger):
                 self.sg_logger = sg_logger

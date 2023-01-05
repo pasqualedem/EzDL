@@ -9,9 +9,6 @@ class CELoss(CrossEntropyLoss):
             weight = torch.tensor(weight)
         super().__init__(*args, weight=weight, **kwargs)
 
-    def __call__(self, x, target, **kwargs):
-        return super().__call__(x, target.float(), **kwargs)
-
 
 class FocalLoss(Module):
     def __init__(self, gamma: float = 0, weight=None, reduction: str = 'mean', **kwargs):

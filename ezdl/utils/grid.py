@@ -16,8 +16,10 @@ def linearize(dictionary: Mapping):
             exps.extend(((key, lin_key), lin_value) for lin_key, lin_value in linearize(value))
         elif isinstance(value, list):
             exps.append((key, value))
+        elif value is None:
+            exps.append((key, [{}]))
         else:
-            raise ValueError(f"Only dict or lists!!! -> {value} is {type(value)} for key {key}")
+            raise ValueError(f"Only dict, lists or None!!! -> {value} is {type(value)} for key {key}")
     return exps
 
 
@@ -63,6 +65,7 @@ def delinearize(lin_dict):
 def make_grid(dict_of_list, return_cartesian_elements=False):
     """
     Produce a list of dict for each combination of values in the input dict given by the list of values
+    :param return_cartesian_elements: if True return the elements that differs from the base dict
     :param dict_of_list: a dictionary where values can be lists
     :params return_cartesian_elements: return elements multiplied
 

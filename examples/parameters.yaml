@@ -1,9 +1,10 @@
 experiment:
-  name: Classification # name of the Wandb experiment
+  name: Classification # name of the logger platform experiment
   group: FirstGroup
   continue_with_errors: False
   start_from_grid: 0
   start_from_run: 0
+  logger: clearml
   tracking_dir: './examplesExp'
   entity: null
   excluded_files: ".pth"
@@ -11,7 +12,7 @@ experiment:
 parameters:
   # Contains the parameters to build the grid.
   # Each value should be a dict or a list
-  tags: [[mytag1, mytag2]] # list of tags to attach to the run in Wandb
+  tags: [[mytag1, mytag2]] # list of tags to attach to the run in logger platform
   phases: [[train, test]] # list of phases
   dataset_interface: [examples/cifar10/Cifar10] # Path to the dataset interface class
 
@@ -20,7 +21,7 @@ parameters:
       name: [cross_entropy] # class loss name
       params: [{}]
     seed: [42] # random seed to set
-    max_epochs: [ 5, 10 ]
+    max_epochs: [ 1, 2 ]
     initial_lr: [ 0.0001 ]
     optimizer: [ Adam ]
     # ema: True
@@ -31,7 +32,9 @@ parameters:
     freeze_pretrained: [ False ]
 
   early_stopping:
-    enabled: [False] # tells if to enable the early stopping (True, False)
+    patience: [ 10 ]
+    monitor: [ loss ]
+    mode: [ min ]
 
   train_metrics:
     f1:
@@ -59,11 +62,15 @@ parameters:
       num_classes: [10]
 
   dataset:
+    channels: [["R", "G", "B"]]
+    num_classes: [10]
     trainset: [{}]
     testset: [{}]
     trainloader:
       batch_size: [8]
+      num_workers: [0]
     testloader:
       batch_size: [8]
+      num_workers: [0]
 
 other_grids:

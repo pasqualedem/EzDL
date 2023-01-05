@@ -2,13 +2,14 @@ import os
 from typing import Optional, Union, Any
 
 import pandas as pd
+import numpy as np
+
 import torch
 import wandb
 from PIL import Image
-from flatbuffers.builder import np
 from matplotlib import pyplot as plt
 from super_gradients.common.abstractions.abstract_logger import get_logger
-from super_gradients.common.environment.env_helpers import multi_process_safe
+from super_gradients.common.environment.ddp_utils import multi_process_safe
 
 from ezdl.logger.basesg_logger import BaseSGLogger
 

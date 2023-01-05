@@ -1,4 +1,8 @@
 import os
+import torch
+
+import numpy as np
+
 from typing import Union, Callable, Mapping, Any, List
 
 from super_gradients.training.utils.callbacks import *
@@ -10,13 +14,18 @@ from PIL import ImageColor, Image
 def callback_factory(name, params, **kwargs):
     params = params or {}
     if name in ['early_stop', 'early_stopping', 'EarlyStop']:
+        if "phase" in params:
+            params.pop("phase")
         return EarlyStop(Phase.VALIDATION_EPOCH_END, **params)
     if name == "SegmentationVisualizationCallback":
         seg_trainer = kwargs['seg_trainer']
         loader = kwargs['loader']
         dataset = kwargs['dataset']
+        params['freq'] = params.get('freq', 1)
+        params['phase'] = Phase.VALIDATION_BATCH_END \
+            if params['phase'] == 'validation' \
+            else Phase.TEST_BATCH_END
         return SegmentationVisualizationCallback(logger=seg_trainer.sg_logger,
-                                                 phase=Phase.VALIDATION_BATCH_END,
                                                  batch_idxs=[0, len(loader) - 1],
                                                  last_img_idx_in_batch=4,
                                                  num_classes=dataset.trainset.CLASS_LABELS,
@@ -74,11 +83,18 @@ class SegmentationVisualization:
 
     @staticmethod
     def _visualize_image(image_np: np.ndarray, pred_mask: torch.Tensor, target_mask: torch.Tensor, classes):
+        """
+
+        :param image_np: numpy image
+        :param pred_mask: (C, H, W) tensor of classes in one hot encoding
+        :param target_mask: (H, W) tensor of classes
+        :param classes:
+        :return:
+        """
         pred_mask = torch.tensor(pred_mask.copy())
         target_mask = torch.tensor(target_mask.copy())
 
         pred_mask = pred_mask.argmax(dim=0)
-        target_mask = target_mask.argmax(dim=0)
 
         if image_np.shape[0] < 3:
             image_np = torch.vstack([image_np,

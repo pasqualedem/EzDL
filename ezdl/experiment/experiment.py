@@ -129,6 +129,7 @@ class Experimenter:
         logger.info(f'There are {len(complete_grids)} grids')
 
         self.grids, dot_elements = zip(*[make_grid(grid, return_cartesian_elements=True) for grid in complete_grids])
+        # WARNING: Grids' objects have the same IDs!
         dot_elements = list(dot_elements)
         if len(dot_elements) > 1:
             dot_elements[1:] = [list(dict(linearize(others) + dot).items()) for others, dot in

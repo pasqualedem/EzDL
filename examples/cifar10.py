@@ -10,3 +10,5 @@ class Cifar10(DatasetInterface):
                                             dataloader_params=dataset_params['trainloader'])
         self.test_loader = dataloaders.get("cifar10_val", dataset_params=dataset_params['testset'],
                                            dataloader_params=dataset_params['testloader'])
+        self.val_loader = dataloaders.get("cifar10_val", dataset_params=dataset_params['testset'],
+                                           dataloader_params=dataset_params['testloader'])

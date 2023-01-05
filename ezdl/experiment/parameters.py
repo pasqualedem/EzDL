@@ -27,8 +27,7 @@ def parse_params(params: dict) -> (dict, dict, dict, list):
 
     if input_train_params.get('metric_to_watch') == 'loss':
         input_train_params['metric_to_watch'] = loss.__class__.__name__
-    if recursive_get(params, 'early_stopping', 'params', 'monitor') == 'loss':
-        params['early_stopping']['params']['monitor'] = loss.__class__.__name__
+
     train_params = {
         **input_train_params,
         "train_metrics_list": list(train_metrics.values()),
@@ -48,12 +47,28 @@ def parse_params(params: dict) -> (dict, dict, dict, list):
     }
 
     # callbacks
-    train_callbacks = params.get('train_callbacks') or {}
-    test_callbacks = params.get('test_callbacks') or {}
-    val_callbacks = params.get('val_callbacks') or {}
+    train_callbacks = add_phase_in_callbacks(params.get('train_callbacks') or {}, "train")
+    test_callbacks = add_phase_in_callbacks(params.get('test_callbacks') or {}, "test")
+    val_callbacks = add_phase_in_callbacks(params.get('val_callbacks') or {}, "validation")
 
     # early stopping
     if params.get('early_stopping'):
         val_callbacks['early_stopping'] = params.get('early_stopping')
 
-    return train_params, test_params, dataset_params, (train_callbacks, test_callbacks, val_callbacks)
+    if recursive_get(val_callbacks, 'early_stopping', 'monitor') == 'loss':
+        val_callbacks['early_stopping']['monitor'] = loss.__class__.__name__
+
+    return train_params, test_params, dataset_params, (train_callbacks, val_callbacks, test_callbacks)
+
+
+def add_phase_in_callbacks(callbacks, phase):
+    """
+    Add default phase to callbacks
+    :param callbacks: dict of callbacks
+    :param phase: "train", "validation" or "test"
+    :return: dict of callbacks with phase
+    """
+    for callback in callbacks.values():
+        if callback.get('phase') is None:
+            callback['phase'] = phase
+    return callbacks

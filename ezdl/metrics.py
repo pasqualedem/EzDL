@@ -2,7 +2,7 @@ from typing import Mapping
 from functools import reduce
 
 from torch import Tensor
-from torchmetrics import JaccardIndex, AUROC, F1Score, Precision, Recall, ConfusionMatrix, ROC
+from torchmetrics import JaccardIndex, AUROC, F1Score, Precision, Recall, ConfusionMatrix
 from torchmetrics.functional.classification.roc import _roc_compute
 import torch
 
@@ -11,8 +11,6 @@ from copy import deepcopy
 
 class AUC(AUROC):
     def update(self, preds: Tensor, target: Tensor) -> None:
-        if self.num_classes is not None and self.num_classes > 2:
-            target = target.argmax(dim=1)  # So torchmetric under is multiclass
         AUROC.update(self, preds.cpu(), target.cpu())
 
     def get_roc(self):
@@ -30,36 +28,39 @@ def PerClassAUC(name, code):
 
     def update(self, preds: Tensor, target: Tensor) -> None:
         preds = preds[:, self.code, ::].flatten()
-        target = target[:, self.code, ::].bool().flatten()
+        target = (target == code).flatten()
         AUC.update(self, preds, target)
 
     metric = type(name, (AUC,), {"update": update, "__init__": __init__})
     return metric(name, code)
 
 
-class WrapJaccard(JaccardIndex):
-    def update(self, preds: Tensor, target: Tensor) -> None:
-        return super().update(preds.argmax(dim=1), target.argmax(dim=1))
-
-
-class WrapF1(F1Score):
-    def update(self, preds: Tensor, target: Tensor) -> None:
-        return super().update(preds.argmax(dim=1), target.argmax(dim=1))
-
-
-class WrapPrecision(Precision):
-    def update(self, preds: Tensor, target: Tensor) -> None:
-        return super().update(preds.argmax(dim=1), target.argmax(dim=1))
-
-
-class WrapRecall(Recall):
-    def update(self, preds: Tensor, target: Tensor) -> None:
-        return super().update(preds.argmax(dim=1), target.argmax(dim=1))
+# class WrapJaccard(JaccardIndex):
+#     def update(self, preds: Tensor, target: Tensor) -> None:
+#         target = target.argmax(dim=1) if len(target.shape) > 1 else target
+#         return super().update(preds.argmax(dim=1), target)
+#
+#
+# class WrapF1(F1Score):
+#     def update(self, preds: Tensor, target: Tensor) -> None:
+#         return super().update(preds.argmax(dim=1), target.argmax(dim=1))
+#
+#
+# class WrapPrecision(Precision):
+#     def update(self, preds: Tensor, target: Tensor) -> None:
+#         target = target.argmax(dim=1) if len(target.shape) > 1 else target
+#         return super().update(preds.argmax(dim=1), target)
+#
+#
+# class WrapRecall(Recall):
+#     def update(self, preds: Tensor, target: Tensor) -> None:
+#         target = target.argmax(dim=1) if len(target.shape) > 1 else target
+#         return super().update(preds.argmax(dim=1), target)
 
 
 class WrapCF(ConfusionMatrix):
-    def update(self, preds: Tensor, target: Tensor) -> None:
-        return super().update(preds.argmax(dim=1), target.argmax(dim=1))
+    # def update(self, preds: Tensor, target: Tensor) -> None:
+    #     return super().update(preds.argmax(dim=1), target.argmax(dim=1))
 
     def compute(self) -> Tensor:
         # PlaceHolder value
@@ -90,11 +91,11 @@ def metrics_factory(metrics_params: Mapping) -> dict:
 
 
 METRICS = {
-    'jaccard': WrapJaccard,
+    'jaccard': JaccardIndex,
     'auc': AUC,
     'perclassauc': PerClassAUC,
-    'f1': WrapF1,
-    'precision': WrapPrecision,
-    'recall': WrapRecall,
+    'f1': F1Score,
+    'precision': Precision,
+    'recall': Recall,
     'conf_mat': WrapCF
 }
