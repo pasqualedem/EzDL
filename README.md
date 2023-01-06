@@ -2,16 +2,18 @@
 ## Installation
 Recommended to create a Python virtual environment
 
-    pip install ezdl
+```bash
+pip install ezdl
+```
 
 ## Usage
-
-    .
-
+```bash
+ezdl <ACTION>
+```
 **mandatory arguments**
 	
 	action:	Choose the action to do perform: 
-			experiment, resume, resume_run, complete, preprocess, manipulate, app
+			experiment, resume_run, complete, manipulate, app
 
 **optional arguments**:
 
@@ -35,62 +37,89 @@ It must have 3 top keys:
 - parameters
 - other_grids
 
+Let's see the CIFAR10 example:
 
 ```yaml
 experiment:
   # It contains all the about the grids and the group of runs:
-  name: exp-name # name of the Wandb experiment
-  group: exp-group # name of group of experiments for Wandb
-  continue_with_errors: True # continue with other runs even if a run fails
+  name: Classification # name of the logger platform experiment
+  group: FirstGroup # name of group of experiments for the logger platform
+  continue_with_errors: False # continue with other runs even if a run fails
   start_from_grid: 0 # skip grids in the grid search
   start_from_run: 0 # skip runs from the selected grid
-  tracking_dir: '.' # dir where results will be saved
-  entity: myUsername # Wandb entity (username)
-  excluded_files: null # glob of files to not upload to Wandb
+  logger: clearml # logger platform to use
+  tracking_dir: './examplesExp' # dir where results will be saved
+  entity: null # Wandb entity (username)
+  excluded_files:  null # glob of files to not upload to Wandb
 
 parameters:
   # Contains the parameters to build the grid.
   # Each value should be a dict or a list
-  tags: [[mytag1, mytag2]] # list of tags to attach to the run in Wandb
+  tags: [[mytag1, mytag2]] # list of tags to attach to the run in logger platform
   phases: [[train, test]] # list of phases
-  dataset_interface: [package/module/InterfaceClass] # Path to the dataset interface class
-  
+  dataset_interface: [examples/cifar10/Cifar10] # Path to the dataset interface class
+
   train_params:
     loss:
-      name: [CEloss] # class loss name
-      params: 
-        # params to be passed to class loss
+      name: [cross_entropy] # class loss name
+      params:
     seed: [42] # random seed to set
-  freeze_pretrained: [False] # freeze the loaded pretrained weights
-  # Other parameters relative to Super-Gradients (see their docs)
-  
+    max_epochs: [ 1, 2 ]
+    initial_lr: [ 0.0001 ]
+    optimizer: [ Adam ]
+    zero_weight_decay_on_bias_and_bn: [ True ]
+    average_best_models: [ False ]
+    greater_metric_to_watch_is_better: [ False ]
+    metric_to_watch: [ loss ]
+    freeze_pretrained: [ False ] # freeze the loaded pretrained weights
+    # Other parameters relative to Super-Gradients (see their docs)
+
   early_stopping:
-    enabled: [True] # tells if to enable the early stopping (True, False)
-    params:
-      patience: [5] # number of epochs before stopping
-      monitor: [loss] # metric to monitor
-      mode: [min] # min or max
-  
-  train_metrics: 
-    # list of metrics to load from PyTorch metrics 
+    patience: [ 10 ] # number of epochs before stopping
+    monitor: [ loss ] # metric to monitor
+    mode: [ min ] # metric to be minimized or maximized
+
+  train_metrics:
+    # list of metrics to load from PyTorch metrics
     # where the values are their parameters used for training
-  test_metrics: 
-    # list of metrics to load from PyTorch metrics 
+    f1:
+      average: [macro]
+      num_classes: [10]
+      mdmc_average: [global]
+  test_metrics:
+    # list of metrics to load from PyTorch metrics
     # where the values are their parameters used for validation and test
-  
+    f1:
+      num_classes: [10]
+      average: [macro]
+      mdmc_average: [global]
+    precision:
+      average: [macro]
+      num_classes: [10]
+      mdmc_average: [global]
+    recall:
+      average: [macro]
+      num_classes: [10]
+      mdmc_average: [global]
+
   model:
-    name: [package/module/MyModel] # path to model class or model name contained in EzDL or super-gradients
+    name: [resnet18]  # path to model class or model name contained in EzDL or super-gradients
     params: # model parameters
-  
+      pretrained_weights: [imagenet]
+      num_classes: [10]
+
   dataset: # parameters depending on the class you defined for the dataset
-  
-other grids:
+    channels: [["R", "G", "B"]]
+    num_classes: [10]
+    trainset:
+    testset:
+    trainloader:
+      batch_size: [8]
+      num_workers: [0]
+    testloader:
+      batch_size: [8]
+      num_workers: [0]
+
+other_grids:
   # List of supplementary grids (can be empty) in which the parameters defined will override the first grid.
-  # For example
-  - 
-    train_params:
-      loss:
-      name: [AnotherLoss] # class loss name
-      params: 
-        # params to be passed to class loss
 ```
