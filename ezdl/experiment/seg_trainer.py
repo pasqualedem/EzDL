@@ -1,11 +1,10 @@
 import importlib
-import os
-from typing import Mapping
+from typing import Mapping, Dict
 
 import pandas as pd
-import wandb
 from super_gradients.common import MultiGPUMode
 
+from ezdl.callbacks import SegmentationVisualizationCallback, callback_factory
 from ezdl.utils.utilities import get_module_class_from_path
 from piptools.scripts.sync import _get_installed_distributions
 
@@ -23,10 +22,10 @@ import torch
 from super_gradients.training.utils.checkpoint_utils import load_checkpoint_to_model
 from tqdm import tqdm
 
-from ezdl.learning.wandb_logger import WandBSGLogger
-from ezdl.callbacks import SegmentationVisualizationCallback
+# from ezdl.callbacks import SegmentationVisualizationCallback
 from ezdl.models import MODELS as MODELS_DICT
-from ezdl.learning.wandb_logger import BaseSGLogger as BaseLogger
+from ezdl.logger.basesg_logger import BaseSGLogger as BaseLogger
+from ezdl.logger import LOGGERS
 
 logger = get_logger(__name__)
 
@@ -44,14 +43,14 @@ class SegmentationTrainer(Trainer):
                 module, dataset_interface_cls = get_module_class_from_path(dataset_interface)
                 dataset_module = importlib.import_module(module)
                 dataset_interface_cls = getattr(dataset_module, dataset_interface_cls)
-            except AttributeError:
-                raise AttributeError("No interface found!")
+            except AttributeError as e:
+                raise AttributeError("No interface found!") from e
             dataset_interface = dataset_interface_cls(dataset_params)
         elif isinstance(dataset_interface, type):
             pass
         else:
             raise ValueError("Dataset interface should be str or class")
-        data_loader_num_workers = dataset_params['num_workers']
+        data_loader_num_workers = dataset_params.get('num_workers') or 0
         self.connect_dataset_interface(dataset_interface, data_loader_num_workers)
         return self.dataset_interface
 
@@ -123,8 +122,9 @@ class SegmentationTrainer(Trainer):
                       training_params=training_params,
                       train_loader=self.train_loader,
                       valid_loader=self.valid_loader)
-        if self.train_loader.num_workers > 0:
+        if self.train_loader.num_workers > 0 and self.train_loader._iterator is not None:
             self.train_loader._iterator._shutdown_workers()
+        if self.valid_loader.num_workers > 0 and self.valid_loader._iterator is not None:
             self.valid_loader._iterator._shutdown_workers()
         # Restore best parameters
         self.checkpoint = load_checkpoint_to_model(ckpt_local_path=self.checkpoints_dir_path + '/ckpt_best.pth',
@@ -138,7 +138,7 @@ class SegmentationTrainer(Trainer):
              loss: torch.nn.modules.loss._Loss = None,
              silent_mode: bool = False,
              test_metrics: Mapping = None,
-             loss_logging_items_names=None, metrics_progress_verbose=False, test_phase_callbacks=(),
+             loss_logging_items_names=None, metrics_progress_verbose=False, test_phase_callbacks={},
              use_ema_net=True) -> dict:
         """
         Evaluates the model on given dataloader and metrics.
@@ -158,13 +158,8 @@ class SegmentationTrainer(Trainer):
         loss = loss or self.training_params.loss
         if loss is not None:
             loss.to(self.device)
-        test_phase_callbacks = list(test_phase_callbacks) + [
-            SegmentationVisualizationCallback(phase=Phase.TEST_BATCH_END,
-                                              freq=5,
-                                              batch_idxs=list(range(test_loader.__len__())),
-                                              num_classes=self.dataset_interface.trainset.CLASS_LABELS,
-                                              undo_preprocessing=self.dataset_interface.undo_preprocess)
-        ]
+        test_phase_callbacks = [callback_factory(name, params, seg_trainer=self, dataset=self.dataset_interface, loader=test_loader)
+                                for name, params in test_phase_callbacks.items()]
         metrics_values = super().test(model=self.net,
                                       test_loader=test_loader,
                                       loss=loss,
@@ -184,7 +179,7 @@ class SegmentationTrainer(Trainer):
             metrics.pop('conf_mat')
             cf = test_metrics['conf_mat'].get_cf()
             logger.info(f'Confusion matrix:\n{cf}')
-            self.sg_logger.add_table('confusion_matrix', cf,
+            self.sg_logger.add_table('confusion_matrix', cf.cpu(),
                                      columns=list(self.dataset_interface.testset.CLASS_LABELS.values()),
                                      rows=list(self.dataset_interface.testset.CLASS_LABELS.values())
                                      )
@@ -203,19 +198,9 @@ class SegmentationTrainer(Trainer):
                    for i, (fpr, tpr) in enumerate(fpr_tpr)]
             cls = [item for sublist in cls for item in sublist]
             df = pd.DataFrame({'class': cls, 'fpr': fprs, 'tpr': tprs})
-            table = wandb.Table(columns=["class", "fpr", "tpr"], dataframe=df)
-            plt = wandb.plot_table(
-                "wandb/area-under-curve/v0",
-                table,
-                {"x": "fpr", "y": "tpr", "class": "class"},
-                {
-                    "title": "ROC",
-                    "x-axis-title": "False positive rate",
-                    "y-axis-title": "True positive rate",
-                },
-            )
+            name = "ROCAUC"
+            self.sg_logger.add_plot(name, df, "fpr", "tpr", classes_marker="class")
             logger.info('ROC curve computed.')
-            wandb.log({"roc": plt})
         return metrics
 
     def _init_monitored_items(self):
@@ -226,7 +211,7 @@ class SegmentationTrainer(Trainer):
                 raise ValueError(f"Specify which loss {self.loss_logging_items_names} to watch")
         return super()._init_monitored_items()
 
-    def _initialize_sg_logger_objects(self):
+    def _initialize_sg_logger_objects(self, additional_configs_to_log: Dict = None):
         if not self.train_initialized:
             self.train_initialized = True
             # OVERRIDE SOME PARAMETERS TO MAKE SURE THEY MATCH THE TRAINING PARAMETERS
@@ -239,32 +224,23 @@ class SegmentationTrainer(Trainer):
                 'checkpoints_dir_path': self.checkpoints_dir_path,
                 'run_id': self.run_id
             }
-            sg_logger_params = core_utils.get_param(self.training_params, 'sg_logger_params', {})
-            sg_logger = WandBSGLogger(**sg_logger_params, **general_sg_logger_params)
-            self.checkpoints_dir_path = sg_logger.local_dir()
-            self.training_params.override(sg_logger=sg_logger)
             sg_logger = core_utils.get_param(self.training_params, 'sg_logger')
 
-            # OVERRIDE SOME PARAMETERS TO MAKE SURE THEY MATCH THE TRAINING PARAMETERS
-            general_sg_logger_params = {'experiment_name': self.experiment_name,
-                                        'storage_location': self.model_checkpoints_location,
-                                        'resumed': self.load_checkpoint,
-                                        'training_params': self.training_params,
-                                        'checkpoints_dir_path': self.checkpoints_dir_path}
-
             if sg_logger is None:
-                raise RuntimeError('sg_logger must be defined in training params (see default_training_params)')
+                raise RuntimeError('logger must be defined in experiment params (see default_training_params)')
 
             if isinstance(sg_logger, AbstractSGLogger):
                 self.sg_logger = sg_logger
             elif isinstance(sg_logger, str):
-                sg_logger_params = core_utils.get_param(self.training_params, 'sg_logger_params', {})
-                if issubclass(SG_LOGGERS[sg_logger], BaseSGLogger):
-                    sg_logger_params = {**sg_logger_params, **general_sg_logger_params}
-                if sg_logger not in SG_LOGGERS:
-                    raise RuntimeError('sg_logger not defined in SG_LOGGERS')
-
-                self.sg_logger = SG_LOGGERS[sg_logger](**sg_logger_params)
+                sg_logger_params = {**general_sg_logger_params,
+                                    **core_utils.get_param(self.training_params, 'sg_logger_params', {})}
+                if sg_logger in SG_LOGGERS:
+                    self.sg_logger = SG_LOGGERS[sg_logger](**sg_logger_params)
+                elif sg_logger in LOGGERS:
+                    self.sg_logger = LOGGERS[sg_logger](**sg_logger_params)
+                else:
+                    raise RuntimeError('sg_logger not defined in SG_LOGGERS of SuperGradients neither in LOGGERS of '
+                                       'EzDL')
             else:
                 raise RuntimeError('sg_logger can be either an sg_logger name (str) or a subcalss of AbstractSGLogger')
 
@@ -275,6 +251,7 @@ class SegmentationTrainer(Trainer):
 
             # IN CASE SG_LOGGER UPDATED THE DIR PATH
             self.checkpoints_dir_path = self.sg_logger.local_dir()
+            self.training_params.override(sg_logger=sg_logger)
             additional_log_items = {'num_devices': self.num_devices,
                                     'multi_gpu': str(self.multi_gpu),
                                     'device_type': torch.cuda.get_device_name(

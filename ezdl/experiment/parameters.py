@@ -3,7 +3,6 @@ import torch
 from super_gradients.training.utils.callbacks import Phase
 from super_gradients.training.utils.early_stopping import EarlyStop
 
-from ezdl.learning.wandb_logger import WandBSGLogger
 from ezdl.loss import LOSSES as LOSSES_DICT
 from ezdl.metrics import metrics_factory
 from ezdl.utils.utilities import recursive_get
@@ -28,15 +27,14 @@ def parse_params(params: dict) -> (dict, dict, dict, list):
 
     if input_train_params.get('metric_to_watch') == 'loss':
         input_train_params['metric_to_watch'] = loss.__class__.__name__
-    if recursive_get(params, 'early_stopping', 'params', 'monitor') == 'loss':
-        params['early_stopping']['params']['monitor'] = loss.__class__.__name__
+
     train_params = {
         **input_train_params,
         "train_metrics_list": list(train_metrics.values()),
         "valid_metrics_list": list(test_metrics.values()),
         "loss": loss,
         "loss_logging_items_names": ["loss"],
-        "sg_logger": WandBSGLogger,
+        "sg_logger": params['experiment']['logger'],
         'sg_logger_params': {
             'entity': params['experiment']['entity'],
             'tags': params['tags'],
@@ -48,8 +46,29 @@ def parse_params(params: dict) -> (dict, dict, dict, list):
         "test_metrics": test_metrics,
     }
 
-    # early stopping
-    early_stop = [EarlyStop(Phase.VALIDATION_EPOCH_END, **params['early_stopping']['params'])] \
-        if params['early_stopping']['enabled'] else []
+    # callbacks
+    train_callbacks = add_phase_in_callbacks(params.get('train_callbacks') or {}, "train")
+    test_callbacks = add_phase_in_callbacks(params.get('test_callbacks') or {}, "test")
+    val_callbacks = add_phase_in_callbacks(params.get('val_callbacks') or {}, "validation")
 
-    return train_params, test_params, dataset_params, early_stop
+    # early stopping
+    if params.get('early_stopping'):
+        val_callbacks['early_stopping'] = params.get('early_stopping')
+
+    if recursive_get(val_callbacks, 'early_stopping', 'monitor') == 'loss':
+        val_callbacks['early_stopping']['monitor'] = loss.__class__.__name__
+
+    return train_params, test_params, dataset_params, (train_callbacks, val_callbacks, test_callbacks)
+
+
+def add_phase_in_callbacks(callbacks, phase):
+    """
+    Add default phase to callbacks
+    :param callbacks: dict of callbacks
+    :param phase: "train", "validation" or "test"
+    :return: dict of callbacks with phase
+    """
+    for callback in callbacks.values():
+        if callback.get('phase') is None:
+            callback['phase'] = phase
+    return callbacks

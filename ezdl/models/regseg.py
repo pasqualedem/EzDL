@@ -4,7 +4,7 @@ from super_gradients.training.models import SgModule
 from super_gradients.training.models.segmentation_models.regseg import RegSeg, DEFAULT_REGSEG48_BACKBONE_PARAMS, \
     DEFAULT_REGSEG48_DECODER_PARAMS, RegSegBackbone, RegSegDecoder, RegSegHead, DEFAULT_REGSEG48_HEAD_PARAMS
 from super_gradients.training.utils import HpmStruct, get_param
-from super_gradients.training.utils.module_utils import ConvBNReLU
+from super_gradients.modules import ConvBNReLU
 
 
 class RegSeg48(RegSeg):

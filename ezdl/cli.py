@@ -5,6 +5,9 @@ from easydict import EasyDict
 
 from ezdl.utils.utilities import update_collection, load_yaml
 
+import os
+os.environ['CRASH_HANDLER'] = "FALSE"
+
 
 @click.group()
 def main():

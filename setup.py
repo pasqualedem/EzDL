@@ -25,10 +25,12 @@ setuptools.setup(
         ]
     },
     install_requires=[
+        "adjectiveanimalnumber",
         "click",
         "matplotlib",
         "numpy",
         "opencv-python",
+        "plotly",
         "Pillow",
         "ruamel.yaml",
         "scipy",
@@ -44,5 +46,6 @@ setuptools.setup(
         "streamlit",
         "streamlit-ace",
         "easydict",
+        "clearml"
     ]
 )

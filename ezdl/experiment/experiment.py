@@ -46,6 +46,7 @@ class ExpSettings(EasyDict):
         self.name = ""
         self.group = ""
         self.continue_with_errors = True
+        self.logger = None
         super().__init__(*args, **kwargs)
         self.tracking_dir = self.tracking_dir or ""
 
@@ -59,6 +60,7 @@ class ExpSettings(EasyDict):
         self.tracking_dir = e.tracking_dir or self.tracking_dir
         self.excluded_files = e.excluded_files or self.excluded_files
         self.group = e.group or self.group
+        self.logger = e.logger or self.logger
         self.continue_with_errors = not e.continue_with_errors or self.continue_with_errors
 
 
@@ -127,6 +129,7 @@ class Experimenter:
         logger.info(f'There are {len(complete_grids)} grids')
 
         self.grids, dot_elements = zip(*[make_grid(grid, return_cartesian_elements=True) for grid in complete_grids])
+        # WARNING: Grids' objects have the same IDs!
         dot_elements = list(dot_elements)
         if len(dot_elements) > 1:
             dot_elements[1:] = [list(dict(linearize(others) + dot).items()) for others, dot in
@@ -148,7 +151,9 @@ class Experimenter:
 
     def generate_grid_summary(self):
         total_runs = sum(len(grid) for grid in self.grids)
-        total_runs_excl_grid = total_runs - sum([len(grid) for grid in self.grids[self.exp_settings.start_from_grid:]])
+        total_runs_excl_grid = total_runs - sum(
+            len(grid) for grid in self.grids[self.exp_settings.start_from_grid :]
+        )
         total_runs_excl = total_runs_excl_grid + self.exp_settings.start_from_run
         total_runs_to_run = total_runs - total_runs_excl
         self.gs = GridSummary(
@@ -176,8 +181,9 @@ class Experimenter:
                 run = get_interrupted_run(self.exp_settings)
                 yield status_manager.new_run(sg, sr, run.params, grid_len, run)
                 logger.info(f'Running grid {sg} out of {len(self.grids) - 1}')
-                logger.info(f'Running run {sr - 1} out of {grid_len} '
-                            f'({sum([len(self.grids[k]) for k in range(sg)]) + sr} / {self.gs.total_runs - 1})')
+                logger.info(
+                    f'Running run {sr - 1} out of {grid_len} ({sum(len(self.grids[k]) for k in range(sg)) + sr} / {self.gs.total_runs - 1})'
+                )
                 run.launch()
                 exp_log.finish_run(sg, sr)
                 yield status_manager.finish_run()
@@ -197,8 +203,9 @@ class Experimenter:
                     exp_log.insert_run(i, j)
                     yield status_manager.new_run(i, j, params, len(grid))
                     logger.info(f'Running grid {i} out of {len(self.grids) - 1}')
-                    logger.info(f'Running run {j} out of {len(grid) - 1} '
-                                f'({sum([len(self.grids[k]) for k in range(i)]) + j} / {self.gs.total_runs - 1})')
+                    logger.info(
+                        f'Running run {j} out of {len(grid) - 1} ({sum(len(self.grids[k]) for k in range(i)) + j} / {self.gs.total_runs - 1})'
+                    )
                     run = Run()
                     run.init({'experiment': {**self.exp_settings}, **params})
                     yield status_manager.update_run(run.seg_trainer.sg_logger.run)
