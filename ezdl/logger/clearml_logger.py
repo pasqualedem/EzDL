@@ -224,5 +224,13 @@ class ClearMLLogger(BaseSGLogger):
     def add_image_mask_sequence(self, name):
         pass
 
+    @property
+    def name(self):
+        return self.run.name
+
+    @property
+    def url(self):
+        return self.run.get_output_log_web_page()
+
     def __repr__(self):
         return "ClearMLLogger"

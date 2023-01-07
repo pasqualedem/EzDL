@@ -69,7 +69,7 @@ class Status:
     CRASHED = "crashed"
     FINISHED = "finished"
 
-    def __init__(self, grid, run, params, n_grids, grid_len, wandb_run=None):
+    def __init__(self, grid, run, params, n_grids, grid_len, run_name=None, run_url=None):
         self.grid = grid
         self.run = run
         self.params = params
@@ -77,7 +77,8 @@ class Status:
         self.grid_len = grid_len
         self.n_grids = n_grids
         self.exception = None
-        self.wandb_run = wandb_run
+        self.run_name = run_name
+        self.run_url = run_url
 
     def finish(self):
         self.params = {}
@@ -95,13 +96,15 @@ class StatusManager:
         self.n_grids = n_grids
         self.cur_status = None
 
-    def new_run(self, grid, run, params, grid_len, wandb_run=None):
+    def new_run(self, grid, run, params, grid_len, run_name=None, run_url=None):
         self.cur_status = Status(grid=grid, run=run, params=params,
-                                 n_grids=self.n_grids, grid_len=grid_len, wandb_run=wandb_run)
+                                 n_grids=self.n_grids, grid_len=grid_len,
+                                 run_name=run_name, run_url=run_url)
         return self.cur_status
 
-    def update_run(self, wandb_run):
-        self.cur_status.wandb_run = wandb_run
+    def update_run(self, run_name, run_url):
+        self.cur_status.run_name = run_name
+        self.cur_status.run_url = run_url
         return self.cur_status
 
     def finish_run(self):
@@ -179,7 +182,7 @@ class Experimenter:
             try:
                 exp_log.insert_run(sg, sr)
                 run = get_interrupted_run(self.exp_settings)
-                yield status_manager.new_run(sg, sr, run.params, grid_len, run)
+                yield status_manager.new_run(sg, sr, run.params, grid_len, run.seg_trainer.sg_logger.name, run.seg_trainer.sg_logger.url)
                 logger.info(f'Running grid {sg} out of {len(self.grids) - 1}')
                 logger.info(
                     f'Running run {sr - 1} out of {grid_len} ({sum(len(self.grids[k]) for k in range(sg)) + sr} / {self.gs.total_runs - 1})'
@@ -208,7 +211,7 @@ class Experimenter:
                     )
                     run = Run()
                     run.init({'experiment': {**self.exp_settings}, **params})
-                    yield status_manager.update_run(run.seg_trainer.sg_logger.run)
+                    yield status_manager.update_run(run.seg_trainer.sg_logger.name, run.seg_trainer.sg_logger.url)
                     run.launch()
                     exp_log.finish_run(i, j)
                     gc.collect()

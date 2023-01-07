@@ -306,5 +306,13 @@ class WandBSGLogger(BaseSGLogger):
     def add_image_mask_sequence(self, name):
         wandb.log({name: self.sequences[name]})
 
+    @property
+    def name(self):
+        return self.run.name
+
+    @property
+    def url(self):
+        return self.run.url
+
     def __repr__(self):
         return "WandbSGLogger"

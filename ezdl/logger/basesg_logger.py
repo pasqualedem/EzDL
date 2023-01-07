@@ -275,3 +275,12 @@ class BaseSGLogger(AbstractSGLogger):
 
     def local_dir(self) -> str:
         return self._local_dir
+
+    @property
+    def name(self):
+        return "Untitled"
+
+    @property
+    def url(self):
+        return "NoURL"
+

@@ -23,6 +23,7 @@ def exp_summary_builder(exp: Experimenter):
     txt += f"|Resume interrupted run       | {format_bool(exp.exp_settings.resume_last)} |\n"
     txt += f"|Continue with errors         | {format_bool(exp.exp_settings.continue_with_errors)} |\n"
     txt += f"|Excluded files               | {exp.exp_settings.excluded_files} |\n"
+    txt += f"|Logger                       | {exp.exp_settings.logger} |\n"
     txt += f"|Tracking directory           | {exp.exp_settings.tracking_dir} |\n"
     txt += f"|Starting grid                | {exp.exp_settings.start_from_grid} |\n"
     txt += f"|Starting run                 | {exp.exp_settings.start_from_run} |\n"
@@ -50,8 +51,8 @@ def title_builder(title):
     return f"## {title}"
 
 
-def wandb_run_link(wandb_run):
-    return f"View run on wandb: [{wandb_run.name}]({wandb_run.url})"
+def logger_run_link(name, url):
+    return f"View run on the logger platform: [{name}]({url})"
 
 
 class MkFailures:

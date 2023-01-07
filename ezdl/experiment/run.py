@@ -112,6 +112,14 @@ class Run:
             if self.seg_trainer is not None:
                 self.seg_trainer.sg_logger.close(True)
 
+    @property
+    def name(self):
+        return self.seg_trainer.sg_logger.name
+
+    @property
+    def url(self):
+        return self.seg_trainer.sg_logger.url
+
 
 def train(seg_trainer, train_params, dataset, train_callbacks, val_callbacks):
     # Callbacks

@@ -8,11 +8,12 @@ from streamlit.web import bootstrap
 from streamlit import config as _config
 
 from ezdl.app.utils import ManipulationInputs
-from ezdl.app.markdown import exp_summary_builder, grid_summary_builder, MkFailures, wandb_run_link, format_to_delete
+from ezdl.app.markdown import exp_summary_builder, grid_summary_builder, MkFailures, logger_run_link, format_to_delete
 from ezdl.experiment.experiment import ExpSettings, Experimenter, Status
 
 from ezdl.utils.utilities import load_yaml, dict_to_yaml, yaml_string_to_dict
 from ezdl.wandb_manip import update_metadata, fix_string_param, remove_key, delete_files, delete_artifacts, update_config
+from ezdl.logger import LOGGERS
 
 STREAMLIT_AGGRID_URL = "https://github.com/PablocFonseca/streamlit-aggrid"
 
@@ -32,7 +33,14 @@ def DEFAULTS(key=None):
         return ""
 
 
-def update_from_gui(group, track_dir, start_grid, start_run, resume, continue_errors):
+def loggers(logger=None):
+    logger_list = list(LOGGERS.keys())
+    if logger is not None:
+        return logger_list.index(logger)
+    return logger_list
+
+
+def update_from_gui(group, logger, track_dir, start_grid, start_run, resume, continue_errors):
     if st.session_state.experimenter is None:
         st.session_state.experimenter = Experimenter()
     st.session_state.experimenter.update_settings({
@@ -41,6 +49,7 @@ def update_from_gui(group, track_dir, start_grid, start_run, resume, continue_er
         "start_from_grid": start_grid,
         "start_from_run": start_run,
         "tracking_dir": track_dir,
+        "logger": logger,
         "group": group,
     })
     st.session_state.mk_summary = exp_summary_builder(st.session_state.experimenter)
@@ -76,7 +85,7 @@ def set_settings(settings):
 
 class Interface:
     def __init__(self, parameter_file, exp_settings: ExpSettings = None, share: bool = True):
-        self.mk_wandb_link = None
+        self.mk_run_link = None
         self.mk_cur_params = None
         self.failures = None
         self.mk_failures = None
@@ -108,6 +117,7 @@ class Interface:
             with st.form("exp_form"):
                 self.form_path = st.text_input("Experiment name (path)", value=es.name)
                 self.form_group = st.text_input("Experiment group", value=es.group)
+                self.form_logger = st.selectbox("Logger", options=loggers(), index=loggers(es.logger))
                 self.form_track_dir = st.text_input("Tracking directory", value=es.tracking_dir)
                 self.form_grid = st.number_input("Start from grid", min_value=0, value=es.start_from_grid)
                 self.form_run = st.number_input("Start from run", min_value=0, value=es.start_from_run)
@@ -116,6 +126,7 @@ class Interface:
                 submitted = st.form_submit_button("Submit")
                 if submitted:
                     update_from_gui(group=self.form_group,
+                                    logger=self.form_logger,
                                     track_dir=self.form_track_dir,
                                     start_grid=self.form_grid,
                                     start_run=self.form_run,
@@ -251,8 +262,8 @@ class Interface:
             self.mk_failures.markdown(self.failures.get_text())
         if status == Status.STARTING:
             print("Just started")
-        if status.wandb_run is not None:
-            self.mk_wandb_link.markdown(wandb_run_link(status.wandb_run))
+        if status.run_name is not None:
+            self.mk_run_link.markdown(logger_run_link(status.run_name, status.run_url))
 
     def experiment(self):
         self.mk_progress = st.text("Starting... wait!")
@@ -260,7 +271,7 @@ class Interface:
         col1, col2 = st.columns(2)
         with col1:
             self.mk_cur_params = st.markdown("### Current run")
-            self.mk_wandb_link = st.markdown("Waiting to create run on Wandb")
+            self.mk_run_link = st.markdown("Waiting to create run on the logger platform ")
             self.current_params = st.empty()
         with col2:
             self.failures = MkFailures()
