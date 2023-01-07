@@ -33,11 +33,12 @@ def DEFAULTS(key=None):
         return ""
 
 
-def loggers(logger=None):
-    logger_list = list(LOGGERS.keys())
-    if logger is not None:
-        return logger_list.index(logger)
-    return logger_list
+def loggers():
+    return list(LOGGERS.keys())
+
+
+def logger_value(logger):
+    return loggers().index(logger) if logger is not None else 0
 
 
 def update_from_gui(group, logger, track_dir, start_grid, start_run, resume, continue_errors):
@@ -115,48 +116,52 @@ class Interface:
         es = self.experimenter.exp_settings
         with st.sidebar:
             with st.form("exp_form"):
-                self.form_path = st.text_input("Experiment name (path)", value=es.name)
-                self.form_group = st.text_input("Experiment group", value=es.group)
-                self.form_logger = st.selectbox("Logger", options=loggers(), index=loggers(es.logger))
-                self.form_track_dir = st.text_input("Tracking directory", value=es.tracking_dir)
-                self.form_grid = st.number_input("Start from grid", min_value=0, value=es.start_from_grid)
-                self.form_run = st.number_input("Start from run", min_value=0, value=es.start_from_run)
-                self.form_resume = st.checkbox("Resume", value=es.resume)
-                self.form_continue = st.checkbox("Continue with errors", value=es.continue_with_errors)
-                submitted = st.form_submit_button("Submit")
-                if submitted:
-                    update_from_gui(group=self.form_group,
-                                    logger=self.form_logger,
-                                    track_dir=self.form_track_dir,
-                                    start_grid=self.form_grid,
-                                    start_run=self.form_run,
-                                    resume=self.form_resume,
-                                    continue_errors=self.form_continue)
-
+                self._side_form(es)
             self.parameter_file = st.file_uploader("Parameter file", on_change=set_file, key="parameter_file")
         if "parameter_file" in st.session_state and st.session_state.parameter_file:
-            st.write("## ", f"{es.name} - {es.group}")
-            self.yaml_error = st.empty()
-            with st.expander("Grid file"):
-                st.session_state.edit_mode = st.button("Edit") ^ \
+            self._experiment_board(es)
+
+    def _side_form(self, es):
+        self.form_path = st.text_input("Experiment name (path)", value=es.name)
+        self.form_group = st.text_input("Experiment group", value=es.group)
+        self.form_logger = st.selectbox("Logger", options=loggers(), index=logger_value(es.logger))
+        self.form_track_dir = st.text_input("Tracking directory", value=es.tracking_dir)
+        self.form_grid = st.number_input("Start from grid", min_value=0, value=es.start_from_grid)
+        self.form_run = st.number_input("Start from run", min_value=0, value=es.start_from_run)
+        self.form_resume = st.checkbox("Resume", value=es.resume)
+        self.form_continue = st.checkbox("Continue with errors", value=es.continue_with_errors)
+        if st.form_submit_button("Submit"):
+            update_from_gui(group=self.form_group,
+                            logger=self.form_logger,
+                            track_dir=self.form_track_dir,
+                            start_grid=self.form_grid,
+                            start_run=self.form_run,
+                            resume=self.form_resume,
+                            continue_errors=self.form_continue)
+
+    def _experiment_board(self, es):
+        st.write("## ", f"{es.name} - {es.group}")
+        self.yaml_error = st.empty()
+        with st.expander("Grid file"):
+            st.session_state.edit_mode = st.button("Edit") ^ \
                                              ("edit_mode" in st.session_state and st.session_state.edit_mode)
-                if st.session_state.edit_mode:
-                    st.session_state.settings_string = st_ace(
-                        value=st.session_state.settings_string, language="yaml", theme="twilight")
-                    try:
-                        edit_file()
-                    except ScannerError as e:
-                        self.yaml_error.exception(e)
-                else:
-                    st.code(st.session_state.settings_string, language="yaml")
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown(st.session_state.mk_summary, unsafe_allow_html=True)
-            with col2:
-                st.write(st.session_state.mk_params)
-            launch = st.button("Launch!")
-            if launch:
-                self.experiment()
+            if st.session_state.edit_mode:
+                st.session_state.settings_string = st_ace(
+                    value=st.session_state.settings_string, language="yaml", theme="twilight")
+                try:
+                    edit_file()
+                except ScannerError as e:
+                    self.yaml_error.exception(e)
+            else:
+                st.code(st.session_state.settings_string, language="yaml")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown(st.session_state.mk_summary, unsafe_allow_html=True)
+        with col2:
+            st.write(st.session_state.mk_params)
+        if st.button("Launch!"):
+            self.experiment()
+
 
     def manipulation_interface(self):
         path = st.text_input("wandb experiment path")
