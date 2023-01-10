@@ -63,8 +63,7 @@ class SegmentationTrainer(Trainer):
 
         self.dataset_params = self.dataset_interface.get_dataset_params()
 
-    def init_model(self, params: Mapping, resume: bool, checkpoint_path: str = None):
-        # init model
+    def _load_model(self, params):
         model_params = params['model']
         input_channels = len(params['dataset']['channels'])
         output_channels = params['dataset']['num_classes']
@@ -86,6 +85,12 @@ class SegmentationTrainer(Trainer):
                 model = MODELS_DICT[model_params['name']](arch_params)
             else:
                 model = models.get(model_name=model_params['name'], arch_params=arch_params)
+
+        return model, arch_params
+
+    def init_model(self, params: Mapping, resume: bool, checkpoint_path: str = None):
+        # load model
+        model, arch_params = self._load_model(params)
 
         if 'num_classes' not in arch_params.keys():
             if self.classes is None and self.dataset_interface is None:

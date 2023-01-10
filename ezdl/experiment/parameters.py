@@ -58,7 +58,10 @@ def parse_params(params: dict) -> (dict, dict, dict, list):
     if recursive_get(val_callbacks, 'early_stopping', 'monitor') == 'loss':
         val_callbacks['early_stopping']['monitor'] = loss.__class__.__name__
 
-    return train_params, test_params, dataset_params, (train_callbacks, val_callbacks, test_callbacks)
+    # knowledge distillation
+    kd = params.get("kd")
+
+    return train_params, test_params, dataset_params, (train_callbacks, val_callbacks, test_callbacks), kd
 
 
 def add_phase_in_callbacks(callbacks, phase):
