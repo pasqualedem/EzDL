@@ -111,7 +111,7 @@ class StatusManager:
         return self.cur_status.finish()
 
     def crash_run(self, exception):
-        return self.cur_status.crash_run(exception)
+        return self.cur_status.crash(exception)
 
 
 class Experimenter:

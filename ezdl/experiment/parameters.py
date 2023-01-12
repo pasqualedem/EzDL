@@ -18,6 +18,9 @@ def parse_params(params: dict) -> (dict, dict, dict, list):
     loss_params = params['train_params']['loss']
     loss = LOSSES_DICT[loss_params['name']](**loss_params['params'])
 
+    if "kd" in params:
+        loss = LOSSES_DICT[params["kd"]["loss"]["name"]](**params["kd"]["loss"]["params"], task_loss_fn=loss)
+
     # metrics
     train_metrics = metrics_factory(params['train_metrics'])
     test_metrics = metrics_factory(params['test_metrics'])
