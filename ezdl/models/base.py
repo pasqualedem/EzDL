@@ -13,6 +13,7 @@ class BaseModel(nn.Module):
         super().__init__()
         self.backbone_pretrained = backbone_pretrained
         self.backbone = self.eval_backbone(backbone, input_channels, pretrained=backbone_pretrained)
+        self.encoder_maps_sizes = self.backbone.channels
 
     def _init_weights(self, m: nn.Module) -> None:
         if isinstance(m, nn.Linear):

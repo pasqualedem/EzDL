@@ -33,11 +33,14 @@ class BaseLawin(BaseModel):
                 self.main_pretrained = pretrained_channels
             self.backbone.init_pretrained_weights(self.main_pretrained)
 
-    def forward(self, x: Tensor) -> Tensor:
-        y = self.backbone(x)
-        y = self.decode_head(y)  # 4x reduction in image size
+    def forward(self, x: Tensor, return_encoding=False) -> Tensor:
+        feat = self.backbone(x)
+        y = self.decode_head(feat)  # 4x reduction in image size
         y = F.interpolate(y, size=x.shape[2:], mode='bilinear', align_corners=False)  # to original image shape
-        return y
+        return (feat, y) if return_encoding else y
+
+    def stepped_forward(self, x):
+        return self.forward(x, return_encoding=True)
 
 
 class Lawin(BaseLawin):
@@ -87,7 +90,7 @@ class BaseDoubleLawin(BaseLawin):
         self.fusion = MiTFusion(self.backbone.channels,
                                 **filter_none({"p_local": p_local, "p_glob": p_glob, "fusion_type": fusion_type}))
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor, return_encoding=False) -> Tensor:
         main_channels = x[:, :self.main_channels, ::].contiguous()
         side_channels = x[:, self.main_channels:, ::].contiguous()
         feat_main = self.backbone(main_channels)
@@ -95,7 +98,10 @@ class BaseDoubleLawin(BaseLawin):
         feat = self.fusion((feat_main, feat_side))
         y = self.decode_head(feat)  # 4x reduction in image size
         y = F.interpolate(y, size=x.shape[2:], mode='bilinear', align_corners=False)  # to original image shape
-        return y
+        return (feat, y) if return_encoding else y
+
+    def stepped_forward(self, x):
+        return self.forward(x, return_encoding=True)
 
 
 class DoubleLawin(BaseDoubleLawin):
@@ -132,7 +138,7 @@ class BaseSplitLawin(BaseLawin):
         self.fusion = MiTFusion(self.backbone.channels,
                                 **filter_none({"p_local": p_local, "p_glob": p_glob, "fusion_type": fusion_type}))
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor, return_encoding=False) -> Tensor:
         main_channels = x[:, :self.main_channels, ::].contiguous()
         side_channels = x[:, self.main_channels:, ::].contiguous()
         first_feat_side = self.side_backbone(side_channels)
@@ -141,7 +147,10 @@ class BaseSplitLawin(BaseLawin):
         feat = (first_feat,) + self.backbone.partial_forward(first_feat, slice(1, 4))
         y = self.decode_head(feat)  # 4x reduction in image size
         y = F.interpolate(y, size=x.shape[2:], mode='bilinear', align_corners=False)  # to original image shape
-        return y
+        return (feat, y) if return_encoding else y
+
+    def stepped_forward(self, x):
+        return self.forward(x, return_encoding=True)
 
     def initialize_param_groups(self, lr: float, training_params: HpmStruct) -> list:
         """

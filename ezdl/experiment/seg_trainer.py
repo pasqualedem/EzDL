@@ -4,7 +4,7 @@ from typing import Mapping, Dict
 import pandas as pd
 from super_gradients.common import MultiGPUMode
 
-from ezdl.callbacks import SegmentationVisualizationCallback, callback_factory
+from ezdl.callbacks import callback_factory
 from ezdl.utils.utilities import get_module_class_from_path
 from piptools.scripts.sync import _get_installed_distributions
 
@@ -17,6 +17,7 @@ from super_gradients.training.params import TrainingParams
 from super_gradients.training.utils.callbacks import Phase, PhaseContext, CallbackHandler
 from super_gradients.training import utils as core_utils
 from super_gradients.training import models
+from super_gradients.training.utils.distributed_training_utils import setup_device
 
 import torch
 from super_gradients.training.utils.checkpoint_utils import load_checkpoint_to_model
@@ -31,8 +32,14 @@ logger = get_logger(__name__)
 
 
 class SegmentationTrainer(Trainer):
-    def __init__(self, ckpt_root_dir=None, model_checkpoints_location: str = 'local', **kwargs):
+    def __init__(self, ckpt_root_dir=None, model_checkpoints_location: str = 'local', num_devices=1, multi_gpu=MultiGPUMode.AUTO, **kwargs):
         self.run_id = None
+        self.num_devices = num_devices
+        self.multi_gpu = multi_gpu
+        setup_device(
+            num_gpus=num_devices,
+            multi_gpu=multi_gpu
+        )
         self.train_initialized = False
         self.model_checkpoints_location = model_checkpoints_location
         super().__init__(ckpt_root_dir=ckpt_root_dir, **kwargs)
@@ -63,8 +70,7 @@ class SegmentationTrainer(Trainer):
 
         self.dataset_params = self.dataset_interface.get_dataset_params()
 
-    def init_model(self, params: Mapping, resume: bool, checkpoint_path: str = None):
-        # init model
+    def _load_model(self, params):
         model_params = params['model']
         input_channels = len(params['dataset']['channels'])
         output_channels = params['dataset']['num_classes']
@@ -86,6 +92,12 @@ class SegmentationTrainer(Trainer):
                 model = MODELS_DICT[model_params['name']](arch_params)
             else:
                 model = models.get(model_name=model_params['name'], arch_params=arch_params)
+
+        return model, arch_params
+
+    def init_model(self, params: Mapping, resume: bool, checkpoint_path: str = None):
+        # load model
+        model, arch_params = self._load_model(params)
 
         if 'num_classes' not in arch_params.keys():
             if self.classes is None and self.dataset_interface is None:
@@ -126,7 +138,13 @@ class SegmentationTrainer(Trainer):
             self.train_loader._iterator._shutdown_workers()
         if self.valid_loader.num_workers > 0 and self.valid_loader._iterator is not None:
             self.valid_loader._iterator._shutdown_workers()
-        # Restore best parameters
+        self._restore_best_params()
+
+        
+    def _restore_best_params(self):
+        """
+        Restore best parameters after the training
+        """
         self.checkpoint = load_checkpoint_to_model(ckpt_local_path=self.checkpoints_dir_path + '/ckpt_best.pth',
                                                    load_backbone=False,
                                                    net=self.net,

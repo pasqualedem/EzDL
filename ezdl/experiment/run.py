@@ -7,6 +7,7 @@ from super_gradients.training.utils.callbacks import Phase
 from copy import deepcopy
 
 from ezdl.callbacks import MetricsLogCallback, callback_factory
+from ezdl.experiment.kd_seg_trainer import KDSegTrainer
 from ezdl.experiment.parameters import parse_params
 from ezdl.experiment.seg_trainer import SegmentationTrainer
 from ezdl.utils.utilities import dict_to_yaml_string, values_to_number, nested_dict_update
@@ -16,6 +17,7 @@ logger = get_logger(__name__)
 
 class Run:
     def __init__(self):
+        self.kd = None
         self.params = None
         self.dataset = None
         self.train_callbacks = None
@@ -34,7 +36,7 @@ class Run:
         self.params = deepcopy(params)
         self.phases = params['phases']
 
-        self.train_params, self.test_params, self.dataset_params, callbacks = parse_params(self.params)
+        self.train_params, self.test_params, self.dataset_params, callbacks, self.kd = parse_params(self.params)
         self.train_callbacks, self.val_callbacks, self.test_callbacks = callbacks
         self.run_params = params.get('run_params') or {}
 
@@ -42,7 +44,8 @@ class Run:
         self.seg_trainer = None
         try:
             self.parse_params(params)
-            self.seg_trainer = SegmentationTrainer(
+            trainer_class = KDSegTrainer if self.kd else SegmentationTrainer
+            self.seg_trainer = trainer_class(
                 experiment_name=self.params['experiment']['group'],
                 ckpt_root_dir=self.params['experiment']['tracking_dir'] or 'wandb',
             )
@@ -69,10 +72,11 @@ class Run:
             self.phases = phases
             wandb_run.config['in_params'] = self.params
             wandb_run.update()
-            self.train_params, self.test_params, self.dataset_params, callbacks = parse_params(self.params)
+            self.train_params, self.test_params, self.dataset_params, callbacks, kd = parse_params(self.params)
             self.train_callbacks, self.val_callbacks, self.test_callbacks = callbacks
 
-            self.seg_trainer = SegmentationTrainer(
+            trainer_class = KDSegTrainer if kd else SegmentationTrainer
+            self.seg_trainer = trainer_class(
                 experiment_name=self.params['experiment']['group'],
                 ckpt_root_dir=self.params['experiment']['tracking_dir'] or 'wandb',
             )

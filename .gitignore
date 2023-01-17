@@ -1,7 +1,15 @@
 .idea
+.vscode
+**/*.pyc
+**/*.pyo
+**/__pycache__
+**/.ipynb_checkpoints
+**/.pytest_cache
 
 build
 dist
 wandb
 dataset
+venv
+checkpoints
 ezdl.egg-info
