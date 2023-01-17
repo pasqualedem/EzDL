@@ -6,6 +6,7 @@ from typing import Any, Mapping
 
 import collections.abc
 from ruamel.yaml import YAML
+import torch
 
 #
 # def setup_mlflow(exp_name: str, description: str) -> str:
@@ -219,3 +220,17 @@ def recursive_get(dictionary, *keys):
         if dictionary.get(keys[0]):
             return recursive_get(dictionary[keys[0]], *keys[1:])
 
+
+def substitute_values(x: torch.Tensor, values, unique=None):
+    """
+    Substitute values in a tensor with the given values
+    :param x: the tensor
+    :param unique: the unique values to substitute
+    :param values: the values to substitute with
+    :return: the tensor with the values substituted
+    """
+    if unique is None:
+        unique = x.unique()
+    lt = torch.full((unique.max() + 1, ), -1, dtype=values.dtype, device=x.device)
+    lt[unique] = values
+    return lt[x]

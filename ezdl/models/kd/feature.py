@@ -1,21 +1,32 @@
-import torch
-from super_gradients.training.models import SgModule
-from super_gradients.training.models.kd_modules.kd_module import KDModule, KDOutput
-from super_gradients.training.utils import HpmStruct
 from collections import namedtuple
 
+import torch
+from super_gradients.training.models import SgModule
+from super_gradients.training.models.kd_modules.kd_module import KDModule
+from super_gradients.training.utils import HpmStruct
+
 from torch import nn
+
+from ezdl.models.layers.common import ConvModule
+
 
 FDOutput = namedtuple('KDFOutput', ['student_features',
                                     'student_output',
                                     'teacher_features',
                                     'teacher_output'])
 
-from ezdl.models.layers.common import ConvModule
-
 
 class FeatureDistillationModule(KDModule):
+    """
+    Feature Distillation Module
+    """
     def __init__(self, arch_params: HpmStruct, student: SgModule, teacher: torch.nn.Module, run_teacher_on_eval=False):
+        """
+        :param arch_params: architecture parameters
+        :param student: student model
+        :param teacher: teacher model
+        :param run_teacher_on_eval: whether to run the teacher on eval
+        """
         super().__init__(arch_params=arch_params,
                          student=student, teacher=teacher,
                          run_teacher_on_eval=run_teacher_on_eval)
@@ -45,22 +56,25 @@ class FeatureDistillationModule(KDModule):
 
 
 class VariationalInformationDistillation(FeatureDistillationModule):
+    """
+    Feature Distillation Module that uses Variational Information
+    """
     def __init__(self, arch_params: HpmStruct, student: SgModule, teacher: torch.nn.Module, run_teacher_on_eval=False,
                  epsilon=1e-6):
         super().__init__(arch_params=arch_params,
                          student=student, teacher=teacher,
                          run_teacher_on_eval=run_teacher_on_eval)
-        self.mu_networks = [ConvModule(inp, out, 3) for inp, out in
-                            zip(self.student.module.encoder_maps_sizes, self.teacher.module.encoder_maps_sizes)]
-        self.alphas = [torch.nn.Parameter(torch.rand(1)) for _ in self.mu_networks]
-        self.sigmas = [SigmaVariance(epsilon) for _ in self.mu_networks]
+        self.mu_networks = nn.ModuleList([ConvModule(inp, out, 3, p="same") for inp, out in
+                            zip(self.student.module.encoder_maps_sizes, self.teacher.module.encoder_maps_sizes)])
+        self.alphas = nn.ParameterList([torch.nn.Parameter(torch.rand(1)) for _ in self.mu_networks])
+        self.sigmas = nn.ModuleList([SigmaVariance(epsilon) for _ in self.mu_networks])
 
     def forward(self, x):
         fd_output = super().forward(x)
-        mu = [mu_network(fd_output.student_features) for mu_network in self.mu_networks]
+        mu = [mu_network(feat_map) for feat_map, mu_network in zip(fd_output.student_features, self.mu_networks)]
         sigmas = [sigma() for sigma in self.sigmas]
         return FDOutput(
-            student_features=(mu, sigmas),
+            student_features=list(zip(mu, sigmas)),
             student_output=fd_output.student_output,
             teacher_features=fd_output.teacher_features,
             teacher_output=fd_output.teacher_output
