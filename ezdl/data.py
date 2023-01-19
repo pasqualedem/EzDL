@@ -3,12 +3,14 @@ import torchvision.datasets as datasets
 from torch.utils.data import ConcatDataset
 from torch.utils.data.distributed import DistributedSampler
 
-from super_gradients.common.abstractions.abstract_logger import get_logger
 from super_gradients.training import utils as core_utils
 from super_gradients.training.datasets.mixup import CollateMixup
 from super_gradients.training.datasets.samplers.repeated_augmentation_sampler import RepeatAugSampler
 from super_gradients.training.exceptions.dataset_exceptions import IllegalDatasetParameterException
 from super_gradients.training.utils import get_param
+
+from ezdl.logger.text_logger import get_logger
+
 default_dataset_params = {"batch_size": 64, "val_batch_size": 200, "test_batch_size": 200, "dataset_dir": "./data/",
                           "s3_link": None}
 LIBRARY_DATASETS = {

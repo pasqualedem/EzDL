@@ -10,11 +10,11 @@ import torch
 from PIL import Image
 from flatbuffers.builder import np
 from matplotlib import pyplot as plt
-from super_gradients.common.abstractions.abstract_logger import get_logger
 from super_gradients.common.environment.ddp_utils import multi_process_safe
 from clearml import Task, OutputModel
 
 from ezdl.logger.basesg_logger import BaseSGLogger
+from ezdl.logger.text_logger import get_logger
 from ezdl.utils.segmentation import tensor_to_segmentation_image
 
 logger = get_logger(__name__)
@@ -58,6 +58,7 @@ class ClearMLLogger(BaseSGLogger):
                              task_name=experiment_name,
                              auto_connect_frameworks=False,
                              continue_last_task=resume,
+                             output_uri=True
                              )
         if save_code:
             self._save_code()
@@ -162,7 +163,8 @@ class ClearMLLogger(BaseSGLogger):
         if not name.endswith('.pth'):
             name += '.pth'
         model = OutputModel(task=self.run, name=name)
-        path = os.path.join(self._local_dir, name)
+        path = os.path.join(self._local_dir, self.name, name)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         torch.save(state_dict, path)
         model.update_weights(weights_filename=path, iteration=global_step)
 

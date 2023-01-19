@@ -4,11 +4,8 @@ from typing import Mapping, Dict
 import pandas as pd
 from super_gradients.common import MultiGPUMode
 
-from ezdl.callbacks import callback_factory
-from ezdl.utils.utilities import get_module_class_from_path
 from piptools.scripts.sync import _get_installed_distributions
 
-from super_gradients.common.abstractions.abstract_logger import get_logger
 from super_gradients.common.sg_loggers import SG_LOGGERS, BaseSGLogger
 from super_gradients.common.sg_loggers.abstract_sg_logger import AbstractSGLogger
 from super_gradients.training import StrictLoad, Trainer
@@ -22,11 +19,15 @@ from super_gradients.training.utils.distributed_training_utils import setup_devi
 import torch
 from super_gradients.training.utils.checkpoint_utils import load_checkpoint_to_model
 from tqdm import tqdm
+from pprint import pformat
 
 # from ezdl.callbacks import SegmentationVisualizationCallback
 from ezdl.models import MODELS as MODELS_DICT
+from ezdl.callbacks import callback_factory
+from ezdl.utils.utilities import get_module_class_from_path
 from ezdl.logger.basesg_logger import BaseSGLogger as BaseLogger
 from ezdl.logger import LOGGERS
+from ezdl.logger.text_logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -188,12 +189,21 @@ class SegmentationTrainer(Trainer):
                                       test_phase_callbacks=test_phase_callbacks,
                                       use_ema_net=use_ema_net)
 
-        metric_names = test_metrics.keys()
+
 
         if self.test_loader.num_workers > 0:
             self.test_loader._iterator._shutdown_workers()
-        metrics = {'test_loss': metrics_values[0], **dict(zip(metric_names, metrics_values[1:]))}
-        if 'conf_mat' in metrics.keys():
+
+        metric_names = test_metrics.keys()
+        loss_names = self.loss_logging_items_names
+        if len(loss_names) + len(metric_names) != len(metrics_values):
+            raise ValueError(f'Number of loss names ({len(loss_names)}) + number of metric names ({len(metric_names)}) '
+                             f'!= number of metrics values ({len(metrics_values)})')
+        losses = dict(zip(loss_names, metrics_values[:len(loss_names)]))
+        metrics = dict(zip(metric_names, metrics_values[len(loss_names):]))
+        metrics = {**losses, **metrics}
+
+        if 'conf_mat' in metrics:
             metrics.pop('conf_mat')
             cf = test_metrics['conf_mat'].get_cf()
             logger.info(f'Confusion matrix:\n{cf}')
@@ -202,7 +212,8 @@ class SegmentationTrainer(Trainer):
                                      rows=list(self.dataset_interface.testset.CLASS_LABELS.values())
                                      )
         self.sg_logger.add_summary(metrics)
-        if 'auc' in metrics.keys():
+        logger.info(f'Test metrics: {pformat(metrics)}')
+        if 'auc' in metrics:
             logger.info('Computing ROC curve...')
             roc = test_metrics['auc'].get_roc()
             fpr_tpr = [(roc[0][i], roc[1][i]) for i in range(len(roc))]

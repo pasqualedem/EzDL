@@ -11,7 +11,7 @@ from ezdl.experiment.run import Run
 from ezdl.experiment.resume import get_interrupted_run, retrieve_run_to_resume
 from ezdl.utils.grid import make_grid, linearize
 from ezdl.utils.utilities import nested_dict_update, update_collection
-from super_gradients.common.abstractions.abstract_logger import get_logger
+from ezdl.logger.text_logger import get_logger
 
 logger = get_logger(__name__)
 

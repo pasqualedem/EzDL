@@ -2,10 +2,10 @@ import gc
 import sys
 import os
 
-from super_gradients.common.abstractions.abstract_logger import get_logger
 from super_gradients.training.utils.callbacks import Phase
 from copy import deepcopy
 
+from ezdl.logger.text_logger import get_logger
 from ezdl.callbacks import MetricsLogCallback, callback_factory
 from ezdl.experiment.kd_seg_trainer import KDSegTrainer
 from ezdl.experiment.parameters import parse_params

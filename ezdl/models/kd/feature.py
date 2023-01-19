@@ -82,7 +82,7 @@ class VariationalInformationDistillation(FeatureDistillationModule):
 
 
 class SigmaVariance(nn.Module):
-    def __init__(self, epsilon=1e-6):
+    def __init__(self, epsilon=1e-3):
         super().__init__()
         self.epsilon = epsilon
         self.sigma = nn.Parameter(torch.rand(1), requires_grad=True)

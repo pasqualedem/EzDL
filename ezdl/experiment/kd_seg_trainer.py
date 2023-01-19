@@ -3,7 +3,7 @@ from typing import Mapping
 
 from super_gradients import KDTrainer
 from super_gradients.common import StrictLoad
-from super_gradients.common.abstractions.abstract_logger import get_logger
+from ezdl.logger.text_logger import get_logger
 from super_gradients.training.utils.checkpoint_utils import load_checkpoint_to_model
 from super_gradients.training.models.all_architectures import KD_ARCHITECTURES
 

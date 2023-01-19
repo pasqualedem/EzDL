@@ -7,7 +7,7 @@ import pandas as pd
 
 from ezdl.experiment.run import Run
 
-from super_gradients.common.abstractions.abstract_logger import get_logger
+from ezdl.logger.text_logger import get_logger
 
 logger = get_logger(__name__)
 

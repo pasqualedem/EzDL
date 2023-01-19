@@ -22,11 +22,8 @@ from torch.utils.data.distributed import DistributedSampler
 from super_gradients.training import utils as core_utils
 from super_gradients.training.datasets.mixup import CollateMixup
 from super_gradients.training.exceptions.dataset_exceptions import IllegalDatasetParameterException
-from super_gradients.common.abstractions.abstract_logger import get_logger
 
 from ezdl.data import DatasetInterface
-
-logger = get_logger(__name__)
 
 
 class WeedMapDatasetInterface(DatasetInterface):

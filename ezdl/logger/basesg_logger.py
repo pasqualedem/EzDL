@@ -14,7 +14,8 @@ from super_gradients.common.environment.ddp_utils import multi_process_safe
 from super_gradients.common.sg_loggers.abstract_sg_logger import AbstractSGLogger
 from super_gradients.training.params import TrainingParams
 from super_gradients.training.utils import sg_trainer_utils
-from super_gradients.common.abstractions.abstract_logger import get_logger
+
+from ezdl.logger.text_logger import get_logger
 
 
 logger = get_logger(__name__)

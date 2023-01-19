@@ -8,10 +8,11 @@ import torch
 import wandb
 from PIL import Image
 from matplotlib import pyplot as plt
-from super_gradients.common.abstractions.abstract_logger import get_logger
 from super_gradients.common.environment.ddp_utils import multi_process_safe
 
 from ezdl.logger.basesg_logger import BaseSGLogger
+from ezdl.logger.text_logger import get_logger
+
 
 logger = get_logger(__name__)
 
