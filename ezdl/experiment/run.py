@@ -47,7 +47,7 @@ class Run:
             trainer_class = KDSegTrainer if self.kd else SegmentationTrainer
             self.seg_trainer = trainer_class(
                 experiment_name=self.params['experiment']['group'],
-                ckpt_root_dir=self.params['experiment']['tracking_dir'] or 'wandb',
+                ckpt_root_dir=self.params['experiment']['tracking_dir'] or 'experiments',
             )
             self.dataset = self.seg_trainer.init_dataset \
                     (params['dataset_interface'], dataset_params=deepcopy(self.dataset_params))
@@ -78,12 +78,12 @@ class Run:
             trainer_class = KDSegTrainer if kd else SegmentationTrainer
             self.seg_trainer = trainer_class(
                 experiment_name=self.params['experiment']['group'],
-                ckpt_root_dir=self.params['experiment']['tracking_dir'] or 'wandb',
+                ckpt_root_dir=self.params['experiment']['tracking_dir'] or 'experiments',
             )
             self.dataset = self.seg_trainer.init_dataset \
                 (wandb_run.config['in_params']['dataset_interface'], dataset_params=deepcopy(self.dataset_params))
-            track_dir = wandb_run.config.get('in_params').get('experiment').get('tracking_dir') or 'wandb'
-            checkpoint_path_group = os.path.join(track_dir, wandb_run.group, 'wandb')
+            track_dir = wandb_run.config.get('in_params').get('experiment').get('tracking_dir') or 'experiments'
+            checkpoint_path_group = os.path.join(track_dir, wandb_run.group, 'experiments')
             run_folder = list(filter(lambda x: str(wandb_run.id) in x, os.listdir(checkpoint_path_group)))
             checkpoint_path = None
             if 'epoch' in wandb_run.summary:

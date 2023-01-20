@@ -39,6 +39,7 @@ setuptools.setup(
         "torchaudio",
         "torchmetrics",
         "torchvision",
+        "torchdistill",
         "tqdm",
         "wandb",
         "transformers",

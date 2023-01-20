@@ -8,6 +8,7 @@ from typing import Union, Callable, Mapping, Any, List
 from super_gradients.training.utils.callbacks import *
 from super_gradients.training.utils.early_stopping import EarlyStop
 from super_gradients.training.utils.utils import AverageMeter
+from super_gradients.training.models.kd_modules.kd_module import KDOutput
 from PIL import ImageColor, Image
 
 
@@ -64,7 +65,9 @@ class SegmentationVisualizationCallback(PhaseCallback):
     def __call__(self, context: PhaseContext):
         epoch = context.epoch if context.epoch is not None else 0
         if epoch % self.freq == 0 and context.batch_idx in self.batch_idxs:
-            preds = context.preds.clone()
+            if hasattr(context.preds, "student_output"): # is knowledge distillation
+                preds = context.preds.student_output
+            preds = preds.clone()
             SegmentationVisualization.visualize_batch(logger=context.sg_logger,
                                                       image_tensor=context.inputs,
                                                       pred_mask=preds,

@@ -37,10 +37,7 @@ class BaseLawin(BaseModel):
         feat = self.backbone(x)
         y = self.decode_head(feat)  # 4x reduction in image size
         y = F.interpolate(y, size=x.shape[2:], mode='bilinear', align_corners=False)  # to original image shape
-        return (feat, y) if return_encoding else y
-
-    def stepped_forward(self, x):
-        return self.forward(x, return_encoding=True)
+        return (y, feat) if return_encoding else y
 
 
 class Lawin(BaseLawin):
@@ -98,10 +95,7 @@ class BaseDoubleLawin(BaseLawin):
         feat = self.fusion((feat_main, feat_side))
         y = self.decode_head(feat)  # 4x reduction in image size
         y = F.interpolate(y, size=x.shape[2:], mode='bilinear', align_corners=False)  # to original image shape
-        return (feat, y) if return_encoding else y
-
-    def stepped_forward(self, x):
-        return self.forward(x, return_encoding=True)
+        return (y, feat) if return_encoding else y
 
 
 class DoubleLawin(BaseDoubleLawin):
@@ -147,11 +141,8 @@ class BaseSplitLawin(BaseLawin):
         feat = (first_feat,) + self.backbone.partial_forward(first_feat, slice(1, 4))
         y = self.decode_head(feat)  # 4x reduction in image size
         y = F.interpolate(y, size=x.shape[2:], mode='bilinear', align_corners=False)  # to original image shape
-        return (feat, y) if return_encoding else y
-
-    def stepped_forward(self, x):
-        return self.forward(x, return_encoding=True)
-
+        return (y, feat) if return_encoding else y
+        
     def initialize_param_groups(self, lr: float, training_params: HpmStruct) -> list:
         """
 

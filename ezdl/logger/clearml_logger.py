@@ -1,4 +1,5 @@
 import os
+import shutil
 from typing import Optional, Union
 
 import pandas as pd
@@ -68,6 +69,8 @@ class ClearMLLogger(BaseSGLogger):
         super().__init__(project_name, experiment_name, storage_location, resumed, training_params,
                          checkpoints_dir_path, tb_files_user_prompt, launch_tensorboard, tensorboard_port,
                          self.s3_location_available, self.s3_location_available, self.s3_location_available)
+        self._local_dir = f"{self._local_dir}/{experiment_name}"
+        self._make_dir()
 
     @multi_process_safe
     def add_config(self, tag: str = None, config: dict = None):
@@ -145,8 +148,10 @@ class ClearMLLogger(BaseSGLogger):
     @multi_process_safe
     def close(self, really=False):
         if really:
+            shutil.rmtree(self._local_dir)
             super().close()
             self.run.close()
+
 
     @multi_process_safe
     def add_file(self, file_name: str = None):
@@ -163,7 +168,7 @@ class ClearMLLogger(BaseSGLogger):
         if not name.endswith('.pth'):
             name += '.pth'
         model = OutputModel(task=self.run, name=name)
-        path = os.path.join(self._local_dir, self.name, name)
+        path = os.path.join(self._local_dir, name)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         torch.save(state_dict, path)
         model.update_weights(weights_filename=path, iteration=global_step)

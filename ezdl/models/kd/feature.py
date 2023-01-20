@@ -1,16 +1,19 @@
 from collections import namedtuple
+from inspect import signature
 
 import torch
 from super_gradients.training.models import SgModule
 from super_gradients.training.models.kd_modules.kd_module import KDModule
 from super_gradients.training.utils import HpmStruct
+from ezdl.utils.sg import unwrap_model_from_parallel
+from torchdistill.core.forward_hook import ForwardHookManager
 
 from torch import nn
 
 from ezdl.models.layers.common import ConvModule
 
 
-FDOutput = namedtuple('KDFOutput', ['student_features',
+FDOutput = namedtuple('FDOutput', ['student_features',
                                     'student_output',
                                     'teacher_features',
                                     'teacher_output'])
@@ -30,17 +33,93 @@ class FeatureDistillationModule(KDModule):
         super().__init__(arch_params=arch_params,
                          student=student, teacher=teacher,
                          run_teacher_on_eval=run_teacher_on_eval)
-        if hasattr(self.student, "module") and not hasattr(self.student, "stepped_forward"):
-            self.student.stepped_forward = self.student.module.stepped_forward
-        if hasattr(self.teacher, "module") and not hasattr(self.teacher, "stepped_forward"):
-            self.teacher.stepped_forward = self.teacher.module.stepped_forward
+
+        if 'hooks' in arch_params:
+            self.teacher_hook_manager = ForwardHookManager(next(self.teacher.parameters()).device)
+            self.student_hook_manager = ForwardHookManager(next(self.student.parameters()).device)
+            self.add_hooks(arch_params['hooks'])
+            self.hooks = True
+        else:
+            self.teacher_hook_manager = None
+            self.student_hook_manager = None
+            student, swrapped = unwrap_model_from_parallel(student, return_was_wrapped=True)
+            teacher, twrapped = unwrap_model_from_parallel(teacher, return_was_wrapped=True)
+            assert 'return_encoding' in signature(student.forward).parameters, \
+                "Student model must return encoding if no hooks are used"
+            assert 'return_encoding' in signature(teacher.forward).parameters, \
+                "Teacher model must return encoding if no hooks are used"
+            self.hooks = False
+            if swrapped:
+                self.student.forward = self.student.module.forward
+            if twrapped:
+                self.teacher.forward = self.teacher.module.forward
+
+    def add_hooks(self, hooks):
+        """
+        Add hooks to the teacher and student
+        :param hooks: list of hooks
+        """
+        if isinstance(hooks, dict):
+            student_hooks = hooks['student']
+            teacher_hooks = hooks['teacher']
+        else:
+            student_hooks = hooks
+            teacher_hooks = hooks
+        self._add_hooks_to_model(self.student, self.student_hook_manager, student_hooks)
+        self._add_hooks_to_model(self.teacher, self.teacher_hook_manager, teacher_hooks)
+
+
+    def _add_hooks_to_model(self, model, hook_manager, hooks):
+        """
+        Add hooks to a model
+        :param model: model to add hooks to
+        """
+        model = unwrap_model_from_parallel(model)
+        for hook in hooks:
+            if isinstance(hook, str):
+                hook_manager.add_hook(model, hook, requires_output=True)
+            elif isinstance(hook, dict):
+                hook_manager.add_hook(model, hook['name'], **hook['params'])
+            else:
+                raise ValueError("Invalid hook")
 
     def forward(self, x):
-        student_features, student_output = self.student.stepped_forward(x)
+        """
+        Forward pass
+        :param x: input
+        :return: output
+        """
+        return self.hook_forward(x) if self.hooks else self.stepped_forward(x)
+
+    def hook_forward(self, x):
+        student_output = self.student.forward(x)
         if self.teacher_input_adapter is not None:
-            teacher_features, teacher_output = self.teacher.stepped_forward(self.teacher_input_adapter(x))
+            teacher_output = self.teacher.forward(self.teacher_input_adapter(x))
         else:
-            teacher_features, teacher_output = self.teacher.stepped_forward(x)
+            teacher_output = self.teacher.forward(x)
+        student_features = self.student_hook_manager.pop_io_dict()
+        student_features = [student_features[hook]['output'] for hook in student_features]
+        teacher_features = self.teacher_hook_manager.pop_io_dict()
+        teacher_features = [teacher_features[hook]['output'] for hook in teacher_features]
+    
+        return FDOutput(
+            student_features=student_features,
+            student_output=student_output,
+            teacher_features=teacher_features,
+            teacher_output=teacher_output
+        )
+
+    def stepped_forward(self, x):
+        """
+        Forward pass for a single step
+        :param x: input
+        :return: output
+        """
+        student_output, student_features = self.student.forward(x, return_encoding=True)
+        if self.teacher_input_adapter is not None:
+            teacher_output, teacher_features = self.teacher.forward(self.teacher_input_adapter(x), return_encoding=True)
+        else:
+            teacher_output, teacher_features = self.teacher.forward(x, return_encoding=True)
         return FDOutput(
             student_features=student_features,
             student_output=student_output,
