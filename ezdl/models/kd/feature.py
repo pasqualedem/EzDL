@@ -134,6 +134,24 @@ class FeatureDistillationModule(KDModule):
             return [{"named_params": self.student.named_parameters()}]
 
 
+class FeatureDistillationConvAdapter(FeatureDistillationModule):
+    def __init__(self, arch_params: HpmStruct, student: SgModule, teacher: torch.nn.Module, run_teacher_on_eval=False,
+                 epsilon=1e-6):
+        super().__init__(arch_params=arch_params,
+                         student=student, teacher=teacher,
+                         run_teacher_on_eval=run_teacher_on_eval)
+        self.adapters = nn.ModuleList([ConvModule(inp, out, 3, p="same") for inp, out in
+                            zip(self.student.module.encoder_maps_sizes, self.teacher.module.encoder_maps_sizes)])
+    def forward(self, x):
+        fd_output = super().forward(x)
+        student_features = [adapter(feat_map) for feat_map, adapter in zip(fd_output.student_features, self.adapters)]
+        return FDOutput(
+            student_features=student_features,
+            student_output=fd_output.student_output,
+            teacher_features=fd_output.teacher_features,
+            teacher_output=fd_output.teacher_output
+        )
+
 class VariationalInformationDistillation(FeatureDistillationModule):
     """
     Feature Distillation Module that uses Variational Information

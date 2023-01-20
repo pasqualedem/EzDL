@@ -65,7 +65,7 @@ class VisklDivLoss(nn.KLDivLoss):
 class KDFeatureLogitsLoss(nn.Module):
     name = "KDFLLoss"
     def __init__(self, task_loss_fn, feature_loss_fn=MSELoss(), distillation_loss_fn=VisklDivLoss(),
-                 dist_feats_loss_coeffs=(0.2, 0.4, 0.4), feats_loss_reduction='mean'):
+                 dist_feats_loss_coeffs=(0.2, 0.4, 0.4), feats_loss_reduction='mean', **kwargs):
         super().__init__()
         self.__class__.__name__ = self.name
         self.task_loss_fn = task_loss_fn
