@@ -9,7 +9,11 @@
 build
 dist
 wandb
+data
 dataset
 venv
 checkpoints
 ezdl.egg-info
+
+exp_log.csv
+parameters.yaml

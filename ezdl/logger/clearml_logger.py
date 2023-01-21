@@ -53,7 +53,7 @@ class ClearMLLogger(BaseSGLogger):
         if kwargs.get("group"):
             project_name = f"{project_name}/{kwargs.get('group')}"
         if not experiment_name:
-            experiment_name = check_output(["adjectiveanimalnumber"]).decode().rstrip("\n")
+            experiment_name = check_output(["adjectiveanimalnumber"]).decode().rstrip("\n").rstrip("\r")
 
         self.run = Task.init(project_name=project_name,
                              task_name=experiment_name,
