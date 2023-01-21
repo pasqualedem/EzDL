@@ -66,8 +66,9 @@ class SegmentationVisualizationCallback(PhaseCallback):
         epoch = context.epoch if context.epoch is not None else 0
         if epoch % self.freq == 0 and context.batch_idx in self.batch_idxs:
             if hasattr(context.preds, "student_output"): # is knowledge distillation
-                preds = context.preds.student_output
-            preds = preds.clone()
+                preds = context.preds.student_output.clone()
+            else:
+                preds = context.preds.clone()
             SegmentationVisualization.visualize_batch(logger=context.sg_logger,
                                                       image_tensor=context.inputs,
                                                       pred_mask=preds,

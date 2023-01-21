@@ -1,11 +1,11 @@
 import os
 import shutil
 from typing import Optional, Union
+from subprocess import check_output
 
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import adjectiveanimalnumber as aan
 import torch
 
 from PIL import Image
@@ -53,7 +53,7 @@ class ClearMLLogger(BaseSGLogger):
         if kwargs.get("group"):
             project_name = f"{project_name}/{kwargs.get('group')}"
         if not experiment_name:
-            experiment_name = aan.generate()
+            experiment_name = check_output(["adjectiveanimalnumber"]).decode().rstrip("\n")
 
         self.run = Task.init(project_name=project_name,
                              task_name=experiment_name,
@@ -171,7 +171,7 @@ class ClearMLLogger(BaseSGLogger):
         path = os.path.join(self._local_dir, name)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         torch.save(state_dict, path)
-        model.update_weights(weights_filename=path, iteration=global_step)
+        model.update_weights(weights_filename=path, iteration=global_step, auto_delete_file=False)
 
     @multi_process_safe
     def add_mask(self, tag: str, image, mask_dict, global_step: int = 0):
