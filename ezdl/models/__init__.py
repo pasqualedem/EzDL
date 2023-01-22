@@ -5,7 +5,12 @@ from ezdl.models.dummy import Random, SingleConv
 from ezdl.models.deeplab import deeplabv3_resnet50
 from ezdl.models.lawin import Lawin, SplitLawin, DoubleLawin
 
-from ezdl.models.kd.feature import FeatureDistillationModule, FeatureDistillationConvAdapter, VariationalInformationDistillation
+from ezdl.models.kd.feature import \
+    LogitsDistillationModule, \
+    FeatureDistillationModule, \
+    FeatureDistillationConvAdapter, \
+    VariationalInformationDistillation
+    
 
 MODELS = {
     'segnet': SegNet,
@@ -23,4 +28,5 @@ KD_MODELS = {
     "feature_distillation": FeatureDistillationModule,
     "variational_information_distillation": VariationalInformationDistillation,
     "feature_distillation_conv_adapter": FeatureDistillationConvAdapter,
+    "logits_distillation": LogitsDistillationModule,
 }

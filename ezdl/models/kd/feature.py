@@ -5,12 +5,12 @@ import torch
 from super_gradients.training.models import SgModule
 from super_gradients.training.models.kd_modules.kd_module import KDModule
 from super_gradients.training.utils import HpmStruct
-from ezdl.utils.sg import unwrap_model_from_parallel
 from torchdistill.core.forward_hook import ForwardHookManager
 
 from torch import nn
 
 from ezdl.models.layers.common import ConvModule
+from ezdl.utils.sg import unwrap_model_from_parallel
 
 
 FDOutput = namedtuple('FDOutput', ['student_features',
@@ -19,7 +19,19 @@ FDOutput = namedtuple('FDOutput', ['student_features',
                                     'teacher_output'])
 
 
-class FeatureDistillationModule(KDModule):
+class LogitsDistillationModule(KDModule):
+    """
+    Logits Distillation Module
+    """
+
+    def initialize_param_groups(self, lr: float, training_params: HpmStruct) -> list:
+        if hasattr(self.student.module, "initialize_param_groups"):
+            return self.student.module.initialize_param_groups(lr, training_params)
+        else:
+            return [{"named_params": self.student.named_parameters()}]
+
+
+class FeatureDistillationModule(LogitsDistillationModule):
     """
     Feature Distillation Module
     """
@@ -126,12 +138,6 @@ class FeatureDistillationModule(KDModule):
             teacher_features=teacher_features,
             teacher_output=teacher_output
         )
-
-    def initialize_param_groups(self, lr: float, training_params: HpmStruct) -> list:
-        if hasattr(self.student.module, "initialize_param_groups"):
-            return self.student.module.initialize_param_groups(lr, training_params)
-        else:
-            return [{"named_params": self.student.named_parameters()}]
 
 
 class FeatureDistillationConvAdapter(FeatureDistillationModule):

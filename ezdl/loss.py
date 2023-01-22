@@ -1,7 +1,6 @@
 from ezdl.models.kd.feature import FDOutput
 from ezdl.utils.utilities import substitute_values
 
-from super_gradients.training.losses.kd_losses import KDklDivLoss
 from torch.nn import CrossEntropyLoss, Module, MSELoss
 import torch.nn.functional as F
 import torch.nn as nn
@@ -60,14 +59,61 @@ class VisklDivLoss(nn.KLDivLoss):
             super().forward(torch.log_softmax(student_output, dim=1),
                                                 torch.softmax(teacher_output, dim=1)).sum(dim=1)
         )
+        
+
+class ComposedLoss(nn.Module):
+    name = "ComposedLoss"
+    def __init__(self) -> None:
+        super().__init__()
+        self.__class__.__name__ = self.name
+        
+    def component_names(self):
+        raise NotImplementedError("Component names not implemented for ComposedLoss abstract class")
+        
 
 
-class KDFeatureLogitsLoss(nn.Module):
+class KDLogitsLoss(ComposedLoss):
+    name = "KDLLoss"
+    """ Knowledge distillation loss, wraps the task loss and distillation loss """
+    def __init__(self, task_loss_fn, distillation_loss_fn=VisklDivLoss(), distillation_loss_coeff: float = 0.5):
+        '''
+        :param task_loss_fn: task loss. E.g., LabelSmoothingCrossEntropyLoss
+        :param distillation_loss_fn: distillation loss. E.g., KLDivLoss
+        :param distillation_loss_coeff:
+        '''
+
+        super(KDLogitsLoss, self).__init__()
+        self.task_loss_fn = task_loss_fn
+        self.distillation_loss_fn = distillation_loss_fn
+        self.distillation_loss_coeff = distillation_loss_coeff
+
+    @property
+    def component_names(self):
+        """
+        Component names for logging during training.
+        These correspond to 2nd item in the tuple returned in self.forward(...).
+        See super_gradients.Trainer.train() docs for more info.
+        """
+        return [self.name,
+        self.task_loss_fn.__class__.__name__,
+        self.distillation_loss_fn.__class__.__name__
+        ]
+
+    def forward(self, kd_module_output, target):
+        task_loss = self.task_loss_fn(kd_module_output.student_output, target)
+        if isinstance(task_loss, tuple):  # SOME LOSS FUNCTIONS RETURNS LOSS AND LOG_ITEMS
+            task_loss = task_loss[0]
+        distillation_loss = self.distillation_loss_fn(kd_module_output.student_output, kd_module_output.teacher_output)
+        loss = task_loss * (1 - self.distillation_loss_coeff) + distillation_loss * self.distillation_loss_coeff
+
+        return loss, torch.cat((loss.unsqueeze(0), task_loss.unsqueeze(0), distillation_loss.unsqueeze(0))).detach()
+
+
+class KDFeatureLogitsLoss(ComposedLoss):
     name = "KDFLLoss"
     def __init__(self, task_loss_fn, feature_loss_fn=MSELoss(), distillation_loss_fn=VisklDivLoss(),
                  dist_feats_loss_coeffs=(0.2, 0.4, 0.4), feats_loss_reduction='mean', **kwargs):
         super().__init__()
-        self.__class__.__name__ = self.name
         self.task_loss_fn = task_loss_fn
         self.feature_loss_fn = feature_loss_fn
         self.distillation_loss_fn = distillation_loss_fn
@@ -170,6 +216,7 @@ LOSSES = {
     "vis_kldiv_loss": VisklDivLoss,
 
     # KD composed losses
+    'kd_logits_loss': KDLogitsLoss,
     'kd_feature_logits_loss': KDFeatureLogitsLoss,
     'variational_information_logits_loss': VariationalInformationLogitsLoss
 }
