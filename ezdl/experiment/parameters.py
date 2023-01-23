@@ -59,12 +59,18 @@ def parse_params(params: dict) -> Tuple[dict, dict, dict, Tuple, dict]:
     if params.get('early_stopping'):
         val_callbacks['early_stopping'] = params.get('early_stopping')
 
-    if recursive_get(val_callbacks, 'early_stopping', 'monitor') == 'loss':
+    es_monitor = recursive_get(val_callbacks, 'early_stopping', 'monitor')
+    if es_monitor == 'loss':
         if hasattr(loss, 'component_names'):
-            monitor =  loss.__class__.__name__ + '/' + loss.__class__.__name__
+            monitor = f'{loss.__class__.__name__}/{loss.__class__.__name__}'
         else:
             monitor = loss.__class__.__name__
         val_callbacks['early_stopping']['monitor'] = monitor
+        monitor = es_monitor.split('/')[-1]
+    if hasattr(loss, 'component_names') and es_monitor in loss.component_names:
+        val_callbacks['early_stopping'][
+            'monitor'
+        ] = f'{loss.__class__.__name__}/{es_monitor}'
 
     # knowledge distillation
     kd = params.get("kd")
