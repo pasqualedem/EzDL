@@ -115,6 +115,9 @@ class StatusManager:
 
 
 class Experimenter:
+    EXP_FINISH_SEP = "#"*50 + " FINISHED " + "#"*50 + "\n"
+    EXP_CRASHED_SEP = "|\\"*50 + "CRASHED" + "|\\"*50 + "\n"
+
     def __init__(self):
         self.gs = None
         self.exp_settings = ExpSettings()
@@ -125,6 +128,7 @@ class Experimenter:
         other_grids = settings['other_grids']
         self.exp_settings = ExpSettings(settings['experiment'])
 
+        print('\n' + '='*100)
         complete_grids = [base_grid]
         if other_grids:
             complete_grids += \
@@ -147,6 +151,12 @@ class Experimenter:
                 info += f', skipping grid {i} with {len(grid)} runs'
             logger.info(info)
         self.generate_grid_summary()
+
+        logger.info(f'Total runs found:              {self.gs.total_runs}')
+        logger.info(f'Total runs excluded by grids:  {self.gs.total_runs_excl_grid}')
+        logger.info(f'Total runs excluded:           {self.gs.total_runs_excl}')
+        logger.info(f'Total runs to run:             {self.gs.total_runs_to_run}')
+        print('='*100 + '\n')
 
         if self.exp_settings.excluded_files:
             os.environ['WANDB_IGNORE_GLOBS'] = self.exp_settings.excluded_files
@@ -188,14 +198,16 @@ class Experimenter:
                     f'Running run {sr - 1} out of {grid_len} ({sum(len(self.grids[k]) for k in range(sg)) + sr} / {self.gs.total_runs - 1})'
                 )
                 run.launch()
+                print(self.EXP_FINISH_SEP)
                 exp_log.finish_run(sg, sr)
                 yield status_manager.finish_run()
-            except Exception as e:
-                logger.error(f'Experiment {sg} failed with error {e}')
+            except Exception as ex:
+                logger.error(f'Experiment {sg} failed with error {ex}')
+                print(self.EXP_CRASHED_SEP)
                 exp_log.finish_run(sg, sr, crashed=True)
                 if not self.exp_settings.continue_with_errors:
-                    raise e
-                yield status_manager.crash_run(e)
+                    raise ex
+                yield status_manager.crash_run(ex)
         for i in range(self.exp_settings.start_from_grid, len(self.grids)):
             grid = self.grids[i]
             if i != self.exp_settings.start_from_grid:
@@ -213,15 +225,17 @@ class Experimenter:
                     run.init({'experiment': {**self.exp_settings}, **params})
                     yield status_manager.update_run(run.seg_trainer.sg_logger.name, run.seg_trainer.sg_logger.url)
                     run.launch()
+                    print(self.EXP_FINISH_SEP)
                     exp_log.finish_run(i, j)
                     gc.collect()
                     yield status_manager.finish_run()
-                except Exception as e:
-                    logger.error(f'Experiment {i} failed with error {e}')
+                except Exception as ex:
+                    logger.error(f'Experiment {i} failed with error {ex}')
+                    print(self.EXP_CRASHED_SEP)
                     exp_log.finish_run(i, j, crashed=True)
                     if not self.exp_settings.continue_with_errors:
-                        raise e
-                    yield status_manager.crash_run(e)
+                        raise ex
+                    yield status_manager.crash_run(ex)
 
     def execute_runs(self):
         for _ in self.execute_runs_generator():
@@ -251,8 +265,4 @@ def experiment(settings: Mapping, param_path: str = "local variable"):
     experimenter = Experimenter()
     grid_summary, grids, cartesian_elements = experimenter.calculate_runs(settings)
 
-    logger.info(f'Total runs found:              {grid_summary.total_runs}')
-    logger.info(f'Total runs excluded by grids:  {grid_summary.total_runs_excl_grid}')
-    logger.info(f'Total runs excluded:           {grid_summary.total_runs_excl}')
-    logger.info(f'Total runs to run:             {grid_summary.total_runs_to_run}')
     experimenter.execute_runs()
