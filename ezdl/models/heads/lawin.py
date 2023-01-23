@@ -124,9 +124,14 @@ class LawinHead(nn.Module):
             self.add_module(f"linear_c{i+1}", MLP(dim, 48 if i == 0 else embed_dim))
 
         self.ratios = RATIOS
-        self.lawin_8 = LawinAttn(embed_dim, 64)
-        self.lawin_4 = LawinAttn(embed_dim, 16)
-        self.lawin_2 = LawinAttn(embed_dim, 4)
+        if embed_dim >= 256:
+            heads = [64, 16, 4]
+        else:
+            heads = [embed_dim//4, embed_dim//16, embed_dim//64]
+
+        self.lawin_8 = LawinAttn(embed_dim, heads[0])
+        self.lawin_4 = LawinAttn(embed_dim, heads[1])
+        self.lawin_2 = LawinAttn(embed_dim, heads[2])
         self.ds_8 = PatchEmbed(8, embed_dim, embed_dim)
         self.ds_4 = PatchEmbed(4, embed_dim, embed_dim)
         self.ds_2 = PatchEmbed(2, embed_dim, embed_dim)

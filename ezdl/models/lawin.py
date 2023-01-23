@@ -5,7 +5,7 @@ from torch import Tensor
 from torch.nn import functional as F
 
 from ezdl.utils.utilities import filter_none
-from ezdl.models.backbones.mit import MiTFusion
+from ezdl.models.backbones.mit import MiTFusion, mit_settings
 from ezdl.models.base import BaseModel
 from ezdl.models.heads.lawin import LawinHead
 from ezdl.models.heads.laweed import LaweedHead
@@ -23,7 +23,7 @@ class BaseLawin(BaseModel):
         backbone_pretrained = get_param(arch_params, "backbone_pretrained", False)
         pretrained_channels = get_param(arch_params, "main_pretrained", None)
         super().__init__(backbone, input_channels, backbone_pretrained)
-        self.decode_head = lawin_class(self.backbone.channels, 256 if 'B0' in backbone else 512, num_classes)
+        self.decode_head = lawin_class(self.backbone.channels, mit_settings[backbone[4:]][0][3], num_classes)
         self.apply(self._init_weights)
         if backbone_pretrained:
             self.main_pretrained = pretrained_channels

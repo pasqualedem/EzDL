@@ -81,3 +81,8 @@ def app(resume, file, dir, grid, run):
     )
     frontend(args)
 
+
+@main.command("complexity")
+def complexity():
+    from ezdl.complexity import complexity
+    complexity()

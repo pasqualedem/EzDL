@@ -1,33 +1,40 @@
 import numpy as np
 import torchvision.models as models
 import torch
+
+from inspect import signature
 from ptflops import get_model_complexity_info
-from models import MODELS
+from ezdl.models import MODELS
 
 
-def seg_model_flops(model, size, verbose=False, per_layer_stats=False, model_args={}):
+def seg_model_flops(model, size, verbose=False, per_layer_stats=False):
     n_channels, w, h = size
-    net = MODELS[model]({'input_channels': n_channels, 'num_classes': 3, "output_channels": 3, **model_args})
-    macs, params = get_model_complexity_info(net, (n_channels, w, h), as_strings=True,
+    macs, params = get_model_complexity_info(model, (n_channels, w, h), as_strings=True,
                                              print_per_layer_stat=per_layer_stats, verbose=verbose)
     print('{:<30}  {:<8}'.format('Computational complexity: ', macs))
     print('{:<30}  {:<8}'.format('Number of parameters: ', params))
 
 
-def seg_inference_throughput(model, size, batch_size, device, model_args={}):
+def model_parameters(model): 
+    total_params = sum(
+        param.numel() for param in model.parameters()
+    )
+    print(f'{total_params:,} total parameters.')
+
+
+def seg_inference_throughput(model, size, batch_size, device):
     n_channels, w, h = size
-    net = MODELS[model]({'input_channels': n_channels, 'num_classes': 3, "output_channels": 3, **model_args}).to(device)
     dummy_input = torch.randn(batch_size, n_channels, w, h, dtype=torch.float).to(device)
     repetitions = 100
     warmup = 50
     total_time = 0
     with torch.no_grad():
         for rep in range(warmup):
-            _ = net(dummy_input)
+            _ = model(dummy_input)
         for rep in range(repetitions):
             starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
             starter.record()
-            _ = net(dummy_input)
+            _ = model(dummy_input)
             ender.record()
             torch.cuda.synchronize()
             curr_time = starter.elapsed_time(ender) / 1000
@@ -38,19 +45,18 @@ def seg_inference_throughput(model, size, batch_size, device, model_args={}):
 
 def seg_inference_inference_per_second(model, size, batch_size, device, model_args={}):
     n_channels, w, h = size
-    net = MODELS[model]({'input_channels': n_channels, 'num_classes': 3, "output_channels": 3, **model_args}).to(device)
     dummy_input = torch.randn(batch_size, n_channels, w, h, dtype=torch.float).to(device)
     starter, ender = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
     repetitions = 500
     timings = np.zeros((repetitions, 1))
     # GPU-WARM-UP
     for _ in range(50):
-        _ = net(dummy_input)
+        _ = model(dummy_input)
     # MEASURE PERFORMANCE
     with torch.no_grad():
         for rep in range(repetitions):
             starter.record()
-            _ = net(dummy_input)
+            _ = model(dummy_input)
             ender.record()
             # WAIT FOR GPU SYNC
             torch.cuda.synchronize()
@@ -62,7 +68,7 @@ def seg_inference_inference_per_second(model, size, batch_size, device, model_ar
     print(f"Time per example {mean_syn / batch_size} ms")
 
 
-if __name__ == '__main__':
+def complexity():
     models = [
         # ('lawin', 1, {'backbone_pretrained': True}),
         # ('lawin', 2, {'backbone_pretrained': True}),
@@ -105,19 +111,53 @@ if __name__ == '__main__':
         # ('segnet', 3, {}),
         # ('segnet', 4, {}),
         # ('resnet', 3, {"model_name": "50"}),
-        ('deeplabv3_resnet50', 3, {})
+        # ('deeplabv3_resnet50', 3, {}),
+        # ('splitlawin', 5, {'main_channels': 3, 'backbone': 'MiT-B0'}),
+        # ('splitlawin', 5, {'main_channels': 3, 'backbone': 'MiT-B1'}),
+        # ('lawin', 5, {'backbone': 'MiT-B0'}, 16),
+        # ('lawin', 5, {'backbone': 'MiT-B1'}, 8),
+        ('lawin', 5, {'backbone': 'MiT-LD'}, 32),
+        ('lawin', 5, {'backbone': 'MiT-L0'}, 48),
+        ('lawin', 5, {'backbone': 'MiT-L1'}, 64),
+        # ('mit', 5, {'model_name': 'B0'}),
+        # ('mit', 5, {'model_name': 'B1'}),
+        # ('mit', 5, {'model_name': 'LD'}),
+        # ('mit', 5, {'model_name': 'LT'}),
+        # ('mit', 5, {'model_name': 'L0'}),
+        # ('mit', 5, {'model_name': 'L1'}),
     ]
     per_layer_stats = False
     verbose = False
-    batch_size = 8
     wh = (256, 256)
-    for model, channels, args in models:
+    for compl_tuple in models:
+        if len(compl_tuple) == 4:
+            model, channels, args, batch_size = compl_tuple
+        else:
+            model, channels, args = compl_tuple
+            batch_size = 8
         with torch.cuda.device(0):
+            model_signature = signature(MODELS[model].__init__).parameters.keys()
+            in_params = {'input_channels': channels, 'num_classes': 3, "output_channels": 3, **args}
+            if 'arch_params' in model_signature:
+                net = MODELS[model](in_params).to('cuda')
+            else:
+                actual_args = {k: v for k, v in in_params.items() if k in model_signature}
+                discard_args = {k: v for k, v in in_params.items() if k not in model_signature}
+                print(f"Discarded args: {discard_args}")
+                net = MODELS[model](**actual_args).to('cuda')
             size = (channels, ) + wh
             print(f"Model: {model}")
+            print(f"args: {args}")
+            print(f"Batches: {batch_size}")
             print(f"Size: {size}")
-            # seg_model_flops(model, channels, verbose, per_layer_stats, args)
+            seg_model_flops(net, size, verbose, per_layer_stats)
+            model_parameters(net)
             # seg_inference_throughput(model, channels, batch_size, 'cuda', args)
-            seg_inference_inference_per_second(model, size, batch_size, 'cuda', args)
+            seg_inference_inference_per_second(net, size, batch_size, 'cuda')
             torch.cuda.empty_cache()
             print()
+        del model
+
+
+if __name__ == '__main__':
+    complexity()
