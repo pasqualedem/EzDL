@@ -12,7 +12,7 @@ from PIL import Image
 from flatbuffers.builder import np
 from matplotlib import pyplot as plt
 from super_gradients.common.environment.ddp_utils import multi_process_safe
-from clearml import Task, OutputModel
+from clearml import Task, OutputModel, Model
 
 from ezdl.logger.basesg_logger import BaseSGLogger
 from ezdl.logger.text_logger import get_logger
@@ -148,6 +148,7 @@ class ClearMLLogger(BaseSGLogger):
     @multi_process_safe
     def close(self, really=False):
         if really:
+            OutputModel.wait_for_uploads()
             shutil.rmtree(self._local_dir)
             super().close()
             self.run.close()
@@ -167,6 +168,10 @@ class ClearMLLogger(BaseSGLogger):
         name = 'ckpt.pth' if tag is None else tag
         if not name.endswith('.pth'):
             name += '.pth'
+        models = [model.name for model in self.run.models['output']] 
+        if name in models:
+            model = self.run.models['output'][models.index(name)]
+            Model.remove(self.run.models['output'][0])
         model = OutputModel(task=self.run, name=name)
         path = os.path.join(self._local_dir, name)
         os.makedirs(os.path.dirname(path), exist_ok=True)
