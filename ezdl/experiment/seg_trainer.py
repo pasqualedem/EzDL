@@ -24,7 +24,7 @@ from pprint import pformat
 # from ezdl.callbacks import SegmentationVisualizationCallback
 from ezdl.models import MODELS as MODELS_DICT
 from ezdl.callbacks import callback_factory
-from ezdl.utils.utilities import get_module_class_from_path
+from ezdl.utils.utilities import get_module_class_from_path, instantiate_class
 from ezdl.logger.basesg_logger import BaseSGLogger as BaseLogger
 from ezdl.logger import LOGGERS
 from ezdl.logger.text_logger import get_logger
@@ -84,10 +84,7 @@ class SegmentationTrainer(Trainer):
             **model_params['params']
         }
         try:
-            module, model_cls = get_module_class_from_path(model_params['name'])
-            model_module = importlib.import_module(module)
-            model_cls = getattr(model_module, model_cls)
-            model = model_cls(arch_params)
+            model = instantiate_class(model_params['name'], arch_params)
         except (AttributeError, ValueError):
             if model_params['name'] in MODELS_DICT.keys():
                 model = MODELS_DICT[model_params['name']](arch_params)

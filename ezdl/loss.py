@@ -1,10 +1,15 @@
 from ezdl.models.kd.feature import FDOutput
-from ezdl.utils.utilities import substitute_values
+from ezdl.utils.utilities import substitute_values, instantiate_class
 
 from torch.nn import CrossEntropyLoss, Module, MSELoss
 import torch.nn.functional as F
 import torch.nn as nn
 import torch
+
+from ezdl.logger.text_logger import get_logger
+
+
+logger = get_logger(__name__)
 
 
 def get_reduction(reduction: str):
@@ -219,6 +224,9 @@ LOSSES = {
     'kd_logits_loss': KDLogitsLoss,
     'kd_feature_logits_loss': KDFeatureLogitsLoss,
     'variational_information_logits_loss': VariationalInformationLogitsLoss
+    
+    # Auxiliary losses
+    "auxiliary_loss": AuxiliaryLoss
 }
 
 
@@ -231,12 +239,19 @@ def instiantiate_loss(loss_name, params):
     Returns:
         loss_fn (nn.Module): Loss function.
     """
-    loss_cls_names = {loss_cls.__name__: loss_cls for loss_cls in LOSSES.values()}
-    if loss_name in LOSSES:
-        return LOSSES[loss_name](**params)
-    elif loss_name in loss_cls_names:
-        return loss_cls_names[loss_name](**params)
-    elif loss_name in nn.__dict__:
-        return nn.__dict__[loss_name](**params)
-    else:
-        raise ValueError(f'Loss {loss_name} not found. Available losses: {list(LOSSES.keys())}')
+    try:
+        return instantiate_class(loss_name, params)
+    except (AttributeError, ValueError) as e:
+        logger.info(f'Loss {loss_name} not instantiable from local module.')
+
+        loss_cls_names = {loss_cls.__name__: loss_cls for loss_cls in LOSSES.values()}
+        if loss_name in LOSSES:
+            return LOSSES[loss_name](**params)
+        elif loss_name in loss_cls_names:
+            return loss_cls_names[loss_name](**params)
+        elif loss_name in nn.__dict__:
+            return nn.__dict__[loss_name](**params)
+        else:
+            raise ValueError(
+                f'Loss {loss_name} not found. Available losses: {list(LOSSES.keys())}'
+            ) from e

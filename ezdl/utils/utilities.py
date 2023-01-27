@@ -1,8 +1,11 @@
 import collections
 import io
 import os
+import importlib
+
 from io import StringIO
 from typing import Any, Mapping
+from inspect import signature
 
 import collections.abc
 from ruamel.yaml import YAML
@@ -234,3 +237,13 @@ def substitute_values(x: torch.Tensor, values, unique=None):
     lt = torch.full((unique.max() + 1, ), -1, dtype=values.dtype, device=x.device)
     lt[unique] = values
     return lt[x]
+
+
+def instantiate_class(name, params):
+    module, cls = get_module_class_from_path(name)
+    imp_module = importlib.import_module(module)
+    imp_cls = getattr(imp_module, cls)
+    if len(signature(imp_cls).parameters.keys()) == 1 and \
+        "params" in list(signature(imp_cls).parameters.keys())[0]:
+        return imp_cls(params)
+    return imp_cls(**params)
