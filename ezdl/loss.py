@@ -74,7 +74,38 @@ class ComposedLoss(nn.Module):
         
     def component_names(self):
         raise NotImplementedError("Component names not implemented for ComposedLoss abstract class")
-        
+
+
+class AuxiliaryLoss(ComposedLoss):
+    name = "AuxLoss"
+    """ Auxiliary loss, wraps the task loss and auxiliary loss """
+    def __init__(self, task_loss_fn, aux_loss_fn, aux_loss_coeff: float = 1.0, **kwargs):
+        super().__init__()
+        self.task_loss_fn = task_loss_fn
+        self.aux_loss_fn = aux_loss_fn
+        self.aux_loss_coeff = aux_loss_coeff
+
+    @property
+    def component_names(self):
+        """
+        Component names for logging during training.
+        These correspond to 2nd item in the tuple returned in self.forward(...).
+        See super_gradients.Trainer.train() docs for more info.
+        """
+        return [self.name,
+        self.task_loss_fn.__class__.__name__,
+        self.aux_loss_fn.__class__.__name__
+        ]   
+
+    def forward(self, task_aux_output, target):
+        out, aux = task_aux_output
+        task_loss = self.task_loss_fn(out, target)
+        if isinstance(task_loss, tuple):  # SOME LOSS FUNCTIONS RETURNS LOSS AND LOG_ITEMS
+            task_loss = task_loss[0]
+        aux_loss = self.aux_loss_fn(aux, target)
+        loss = task_loss * (1 - self.aux_loss_coeff) + aux_loss * self.aux_loss_coeff
+
+        return loss, torch.cat((loss.unsqueeze(0), task_loss.unsqueeze(0), aux_loss.unsqueeze(0))).detach()
 
 
 class KDLogitsLoss(ComposedLoss):
@@ -223,7 +254,7 @@ LOSSES = {
     # KD composed losses
     'kd_logits_loss': KDLogitsLoss,
     'kd_feature_logits_loss': KDFeatureLogitsLoss,
-    'variational_information_logits_loss': VariationalInformationLogitsLoss
+    'variational_information_logits_loss': VariationalInformationLogitsLoss,
     
     # Auxiliary losses
     "auxiliary_loss": AuxiliaryLoss
@@ -241,7 +272,7 @@ def instiantiate_loss(loss_name, params):
     """
     try:
         return instantiate_class(loss_name, params)
-    except (AttributeError, ValueError) as e:
+    except (AttributeError, ValueError) as ex:
         logger.info(f'Loss {loss_name} not instantiable from local module.')
 
         loss_cls_names = {loss_cls.__name__: loss_cls for loss_cls in LOSSES.values()}
@@ -254,4 +285,4 @@ def instiantiate_loss(loss_name, params):
         else:
             raise ValueError(
                 f'Loss {loss_name} not found. Available losses: {list(LOSSES.keys())}'
-            ) from e
+            ) from ex

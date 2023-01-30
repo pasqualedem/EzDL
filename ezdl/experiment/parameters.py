@@ -20,7 +20,10 @@ def parse_params(params: dict) -> Tuple[dict, dict, dict, Tuple, dict]:
     loss = instiantiate_loss(loss_params['name'], loss_params['params'])
 
     if "kd" in params:
-        loss = init_kd_loss(loss, params["kd"]["loss"])
+        loss = init_composed_loss(loss, params["kd"]["loss"])
+
+    if "aux_loss" in params:
+        loss = init_composed_loss(loss, params["aux_loss"])
 
     # metrics
     train_metrics = metrics_factory(params['train_metrics'])
@@ -78,9 +81,9 @@ def parse_params(params: dict) -> Tuple[dict, dict, dict, Tuple, dict]:
     return train_params, test_params, dataset_params, (train_callbacks, val_callbacks, test_callbacks), kd
 
 
-def init_kd_loss(loss, loss_params):
+def init_composed_loss(loss, loss_params):
     """
-    Initialize knowledge distillation loss and its components
+    Initialize composed loss (e.g. knowledge distillation) and its components
     :param loss: task_loss_function
     :param loss_params: dict of loss parameters
     :return: loss function

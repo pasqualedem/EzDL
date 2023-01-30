@@ -23,7 +23,7 @@ from pprint import pformat
 
 # from ezdl.callbacks import SegmentationVisualizationCallback
 from ezdl.models import MODELS as MODELS_DICT
-from ezdl.callbacks import callback_factory
+from ezdl.callbacks import AuxMetricsUpdateCallback, callback_factory
 from ezdl.utils.utilities import get_module_class_from_path, instantiate_class
 from ezdl.logger.basesg_logger import BaseSGLogger as BaseLogger
 from ezdl.logger import LOGGERS
@@ -70,6 +70,14 @@ class SegmentationTrainer(Trainer):
                                                     distributed_sampler=self.multi_gpu == MultiGPUMode.DISTRIBUTED_DATA_PARALLEL)
 
         self.dataset_params = self.dataset_interface.get_dataset_params()
+
+    def _add_metrics_update_callback(self, phase):
+        """
+        Adds AuxModelMetricsUpdateCallback to be fired at phase
+
+        :param phase: Phase for the metrics callback to be fired at
+        """
+        self.phase_callbacks.append(AuxMetricsUpdateCallback(phase))
 
     def _load_model(self, params):
         model_params = params['model']

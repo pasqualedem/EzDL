@@ -1,3 +1,4 @@
+from collections import namedtuple
 from ezdl.models.regseg import RegSeg48
 from ezdl.models.backbones import ResNet, MiT
 from ezdl.models.segnet import SegNet
@@ -32,3 +33,7 @@ KD_MODELS = {
     "feature_distillation_conv_adapter": FeatureDistillationConvAdapter,
     "logits_distillation": LogitsDistillationModule,
 }
+
+
+ComposedOutput = namedtuple('ComposedOutput', ['main',
+                                    'aux'])

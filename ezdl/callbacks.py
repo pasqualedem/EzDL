@@ -11,6 +11,8 @@ from super_gradients.training.utils.utils import AverageMeter
 from super_gradients.training.models.kd_modules.kd_module import KDOutput
 from PIL import ImageColor, Image
 
+from ezdl.models import ComposedOutput
+
 
 def callback_factory(name, params, **kwargs):
     params = params or {}
@@ -67,6 +69,8 @@ class SegmentationVisualizationCallback(PhaseCallback):
         if epoch % self.freq == 0 and context.batch_idx in self.batch_idxs:
             if hasattr(context.preds, "student_output"): # is knowledge distillation
                 preds = context.preds.student_output.clone()
+            elif hasattr(context.preds, "main"): # is composed output
+                preds = context.preds.main.clone()
             else:
                 preds = context.preds.clone()
             SegmentationVisualization.visualize_batch(logger=context.sg_logger,
@@ -280,3 +284,17 @@ class SaveSegmentationPredictionsCallback(PhaseCallback):
                 img_to_draw[mask] = color
 
             Image.fromarray(img_to_draw.numpy()).save(path)
+
+
+class AuxMetricsUpdateCallback(MetricsUpdateCallback):
+    """
+    A callback that updates metrics for the current phase for a model with auxiliary outputs.
+    """
+    def __init__(self, phase: Phase):
+        super().__init__(phase=phase)
+
+    def __call__(self, context: PhaseContext):
+        metrics_compute_fn_kwargs = {k: v.main if k == "preds" and isinstance(v, ComposedOutput) else v for k, v in context.__dict__.items()}
+        context.metrics_compute_fn.update(**metrics_compute_fn_kwargs)
+        if context.criterion is not None:
+            context.loss_avg_meter.update(context.loss_log_items, len(context.inputs))
