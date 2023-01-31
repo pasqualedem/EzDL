@@ -1,9 +1,11 @@
 from typing import Tuple
 import numpy as np
+from super_gradients.training.utils.callbacks.all_callbacks import LR_SCHEDULERS_CLS_DICT
 import torch
 from super_gradients.training.utils.callbacks import Phase
 from super_gradients.training.utils.early_stopping import EarlyStop
 
+from ezdl import scheduler as schedulers
 from ezdl.loss import instiantiate_loss
 from ezdl.metrics import metrics_factory
 from ezdl.utils.utilities import recursive_get
@@ -48,6 +50,8 @@ def parse_params(params: dict) -> Tuple[dict, dict, dict, Tuple, dict]:
             'project_name': params['experiment']['name'],
         }
     }
+
+    train_params = parse_scheduler(train_params)
 
     test_params = {
         "test_metrics": test_metrics,
@@ -109,3 +113,23 @@ def add_phase_in_callbacks(callbacks, phase):
         if callback.get('phase') is None:
             callback['phase'] = phase
     return callbacks
+
+
+def parse_scheduler(train_params: dict) -> dict:
+    """
+    Parse scheduler parameters
+    """
+    scheduler = train_params.get('scheduler') or train_params.get('lr_mode')
+    if scheduler is None or scheduler in LR_SCHEDULERS_CLS_DICT:
+        return train_params
+    if "name" in scheduler:
+        scheduler = scheduler["name"]
+        params = scheduler.get("params") or {}
+    if scheduler in schedulers.__dict__:
+        scheduler = schedulers.__dict__[scheduler](**params)
+        train_params['lr_mode'] = "function"
+        train_params['lr_schedule_function'] = scheduler.perform_scheduling
+    return train_params
+        
+
+    

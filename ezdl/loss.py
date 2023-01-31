@@ -79,7 +79,7 @@ class ComposedLoss(nn.Module):
 class AuxiliaryLoss(ComposedLoss):
     name = "AuxLoss"
     """ Auxiliary loss, wraps the task loss and auxiliary loss """
-    def __init__(self, task_loss_fn, aux_loss_fn, aux_loss_coeff: float = 1.0, **kwargs):
+    def __init__(self, task_loss_fn, aux_loss_fn, aux_loss_coeff: float = 0.2, **kwargs):
         super().__init__()
         self.task_loss_fn = task_loss_fn
         self.aux_loss_fn = aux_loss_fn
