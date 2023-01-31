@@ -1,8 +1,8 @@
 
 
 class PolyLR:
-    def __init__(self, poly_exp):
-        self.poly_exp = poly_exp
+    def __init__(self, power):
+        self.poly_exp = power
 
     def perform_scheduling(self, initial_lr, epoch, max_epoch, **kwargs):
         """

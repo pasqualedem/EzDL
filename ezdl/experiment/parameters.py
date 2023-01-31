@@ -120,11 +120,11 @@ def parse_scheduler(train_params: dict) -> dict:
     Parse scheduler parameters
     """
     scheduler = train_params.get('scheduler') or train_params.get('lr_mode')
+    if "name" in scheduler:
+        params = scheduler.get("params") or {}
+        scheduler = scheduler["name"]
     if scheduler is None or scheduler in LR_SCHEDULERS_CLS_DICT:
         return train_params
-    if "name" in scheduler:
-        scheduler = scheduler["name"]
-        params = scheduler.get("params") or {}
     if scheduler in schedulers.__dict__:
         scheduler = schedulers.__dict__[scheduler](**params)
         train_params['lr_mode'] = "function"

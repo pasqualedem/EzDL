@@ -16,6 +16,8 @@ from ezdl.models import ComposedOutput
 
 def callback_factory(name, params, **kwargs):
     params = params or {}
+    if not isinstance(name, str): # Assuming already a callback
+        return name
     if name in ['early_stop', 'early_stopping', 'EarlyStop']:
         if "phase" in params:
             params.pop("phase")
