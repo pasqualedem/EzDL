@@ -27,6 +27,7 @@ setuptools.setup(
     install_requires=[
         "adjectiveanimalnumber",
         "click",
+        "codecarbon",
         "matplotlib",
         "numpy",
         "opencv-python",

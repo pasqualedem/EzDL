@@ -116,7 +116,9 @@ class ClearMLLogger(BaseSGLogger):
 
     @multi_process_safe
     def add_table(self, tag, data, columns, rows):
-        self.run.get_logger().report_table(title=tag, series=tag, table_plot=pd.DataFrame(data, columns=columns))
+        if not isinstance(data, pd.DataFrame):
+            table_plot = pd.DataFrame(data=data, columns=columns)
+        self.run.get_logger().report_table(title=tag, series=tag, table_plot=table_plot)
 
     @multi_process_safe
     def add_plot(self, tag: str, values: pd.DataFrame, xtitle, ytitle, classes_marker=None):

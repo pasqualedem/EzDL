@@ -1,9 +1,13 @@
 import gc
 import sys
 import os
+import pandas as pd
+
+from copy import deepcopy
+from requests.exceptions import ConnectionError
 
 from super_gradients.training.utils.callbacks import Phase
-from copy import deepcopy
+from codecarbon import EmissionsTracker, OfflineEmissionsTracker
 
 from ezdl.logger.text_logger import get_logger
 from ezdl.callbacks import MetricsLogCallback, callback_factory
@@ -29,6 +33,7 @@ class Run:
         self.test_params = None
         self.run_params = None
         self.phases = None
+        self.carbon_tracker = None
         if '.' not in sys.path:
             sys.path.extend('.')
 
@@ -39,6 +44,14 @@ class Run:
         self.train_params, self.test_params, self.dataset_params, callbacks, self.kd = parse_params(self.params)
         self.train_callbacks, self.val_callbacks, self.test_callbacks = callbacks
         self.run_params = params.get('run_params') or {}
+        
+    def _init_carbon_tracker(self):
+        try:
+            self.carbon_tracker = EmissionsTracker(output_dir=self.seg_trainer.sg_logger._local_dir, log_level="warning")
+        except ConnectionError:
+            logger.warning("CodeCarbon is not connected to a server, using offline tracker")
+            self.carbon_tracker = OfflineEmissionsTracker(output_dir=self.seg_trainer.sg_logger._local_dir)
+        self.carbon_tracker.start()
 
     def init(self, params: dict):
         self.seg_trainer = None
@@ -54,6 +67,7 @@ class Run:
             self.seg_trainer.init_model(params, False, None)
             self.seg_trainer.init_loggers({"in_params": params}, deepcopy(self.train_params))
             logger.info(f"Input params: \n\n {dict_to_yaml_string(params)}")
+            self._init_carbon_tracker()
         except Exception as e:
             if (
                 self.seg_trainer is not None
@@ -97,6 +111,7 @@ class Run:
                     ) from exc
             self.seg_trainer.init_model(self.params, True, checkpoint_path)
             self.seg_trainer.init_loggers({"in_params": self.params}, self.train_params, run_id=wandb_run.id)
+            self._init_carbon_tracker()
         except Exception as e:
             if self.seg_trainer is not None:
                 self.seg_trainer.sg_logger.close(really=True)
@@ -114,7 +129,15 @@ class Run:
                 inference(self.seg_trainer, self.run_params, self.dataset)
         finally:
             if self.seg_trainer is not None:
+                self.upload_emissions()
                 self.seg_trainer.sg_logger.close(True)
+                
+    def upload_emissions(self):
+        self.carbon_tracker.stop()
+        self.seg_trainer.sg_logger.add_summary({"emissions": self.carbon_tracker.final_emissions})
+        emissions_data = self.carbon_tracker.final_emissions_data.values
+        emissions_data_values = [[v for k, v in emissions_data.items()]]
+        self.seg_trainer.sg_logger.add_table("emissions", emissions_data_values, emissions_data.keys(), [0])
 
     @property
     def name(self):
