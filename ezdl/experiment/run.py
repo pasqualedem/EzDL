@@ -50,7 +50,7 @@ class Run:
             self.carbon_tracker = EmissionsTracker(output_dir=self.seg_trainer.sg_logger._local_dir, log_level="warning")
         except ConnectionError:
             logger.warning("CodeCarbon is not connected to a server, using offline tracker")
-            self.carbon_tracker = OfflineEmissionsTracker(output_dir=self.seg_trainer.sg_logger._local_dir)
+            self.carbon_tracker = OfflineEmissionsTracker(output_dir=self.seg_trainer.sg_logger._local_dir, log_level="warning", country_iso_code="ITA")
         self.carbon_tracker.start()
 
     def init(self, params: dict):
