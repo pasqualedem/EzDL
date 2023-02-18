@@ -1,5 +1,5 @@
 import importlib
-from typing import Mapping, Dict
+from typing import Mapping, Dict, Tuple
 
 import pandas as pd
 from super_gradients.common import MultiGPUMode
@@ -13,6 +13,7 @@ from super_gradients.training import StrictLoad, Trainer
 from super_gradients.training.params import TrainingParams
 from super_gradients.training.utils.callbacks import Phase, PhaseContext, CallbackHandler
 from super_gradients.training import utils as core_utils
+from super_gradients.common.environment.device_utils import device_config
 from super_gradients.training import models
 from super_gradients.training.utils.distributed_training_utils import setup_device
 
@@ -42,6 +43,7 @@ class SegmentationTrainer(Trainer):
             multi_gpu=multi_gpu
         )
         self.train_initialized = False
+        self.validation = False
         self.model_checkpoints_location = model_checkpoints_location
         super().__init__(ckpt_root_dir=ckpt_root_dir, **kwargs)
 
@@ -146,6 +148,64 @@ class SegmentationTrainer(Trainer):
             self.valid_loader._iterator._shutdown_workers()
         self._restore_best_params()
 
+    def _get_losses(self, outputs: torch.Tensor, targets: torch.Tensor) -> Tuple[torch.Tensor, tuple]:
+        # GET THE OUTPUT OF THE LOSS FUNCTION
+        if self.validation and core_utils.get_param(self.training_params, "inform_loss_in_validaiton", False):
+            loss = self.criterion(outputs, targets, validation=self.validation)
+        else:
+            loss = self.criterion(outputs, targets)
+        if isinstance(loss, tuple):
+            loss, loss_logging_items = loss
+            # IF ITS NOT A TUPLE THE LOGGING ITEMS CONTAIN ONLY THE LOSS FOR BACKPROP (USER DEFINED LOSS RETURNS SCALAR)
+        else:
+            loss_logging_items = loss.unsqueeze(0).detach()
+
+        # ON FIRST BACKWARD, DERRIVE THE LOGGING TITLES.
+        if self.loss_logging_items_names is None or self._first_backward:
+            self._init_loss_logging_names(loss_logging_items)
+            if self.metric_to_watch:
+                self._init_monitored_items()
+            self._first_backward = False
+
+        if len(loss_logging_items) != len(self.loss_logging_items_names):
+            raise ValueError(
+                "Loss output length must match loss_logging_items_names. Got "
+                + str(len(loss_logging_items))
+                + ", and "
+                + str(len(self.loss_logging_items_names))
+            )
+        # RETURN AND THE LOSS LOGGING ITEMS COMPUTED DURING LOSS FORWARD PASS
+        return loss, loss_logging_items
+
+    def _validate_epoch(self, epoch: int, silent_mode: bool = False) -> tuple:
+        self.validation = True
+        res = super()._validate_epoch(epoch, silent_mode)
+        self.validation = False
+        return res
+
+    def _net_to_device(self):
+        """
+        Manipulates self.net according to device.multi_gpu
+        """
+        self.net.to(device_config.device)
+
+        # FOR MULTI-GPU TRAINING (not distributed)
+        sync_bn = core_utils.get_param(self.training_params, "sync_bn", default_val=False)
+        if device_config.multi_gpu == MultiGPUMode.DATA_PARALLEL:
+            self.net = torch.nn.DataParallel(self.net, device_ids=get_device_ids())
+        elif device_config.multi_gpu == MultiGPUMode.DISTRIBUTED_DATA_PARALLEL:
+            if sync_bn:
+                if not self.ddp_silent_mode:
+                    logger.info("DDP - Using Sync Batch Norm... Training time will be affected accordingly")
+                self.net = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.net).to(device_config.device)
+
+            local_rank = int(device_config.device.split(":")[1])
+            self.net = torch.nn.parallel.DistributedDataParallel(self.net, device_ids=[local_rank], output_device=local_rank, find_unused_parameters=True)
+
+        elif not isinstance(self.net, core_utils.WrappedModel):
+            self.net = core_utils.WrappedModel(self.net)
+        else:
+            pass
         
     def _restore_best_params(self):
         """
@@ -180,6 +240,7 @@ class SegmentationTrainer(Trainer):
         """
         test_loader = test_loader or self.test_loader
         loss = loss or self.training_params.loss
+        self.validation = True
         if loss is not None:
             loss.to(self.device)
         test_phase_callbacks = [callback_factory(name, params, seg_trainer=self, dataset=self.dataset_interface, loader=test_loader)
@@ -193,7 +254,7 @@ class SegmentationTrainer(Trainer):
                                       metrics_progress_verbose=metrics_progress_verbose,
                                       test_phase_callbacks=test_phase_callbacks,
                                       use_ema_net=use_ema_net)
-
+        self.validation = False
 
 
         if self.test_loader.num_workers > 0:
@@ -315,6 +376,69 @@ class SegmentationTrainer(Trainer):
             self.phase_callbacks = []
         self.phase_callback_handler = CallbackHandler(self.phase_callbacks)
         self.sg_logger.add_config(config=in_params)
+
+    def _save_checkpoint(self, optimizer=None, epoch: int = None, validation_results_tuple: tuple = None, context: PhaseContext = None):
+        """
+        Save the current state dict as latest (always), best (if metric was improved), epoch# (if determined in training
+        params)
+        """
+        # WHEN THE validation_results_tuple IS NONE WE SIMPLY SAVE THE state_dict AS LATEST AND Return
+        if validation_results_tuple is None:
+            self.sg_logger.add_checkpoint(tag="ckpt_latest_weights_only.pth", state_dict={"net": self.net.state_dict()}, global_step=epoch)
+            return
+
+        # COMPUTE THE CURRENT metric
+        # IF idx IS A LIST - SUM ALL THE VALUES STORED IN THE LIST'S INDICES
+        metric = (
+            validation_results_tuple[self.metric_idx_in_results_tuple]
+            if isinstance(self.metric_idx_in_results_tuple, int)
+            else sum([validation_results_tuple[idx] for idx in self.metric_idx_in_results_tuple])
+        )
+
+        # BUILD THE state_dict
+        state = {"net": self.net.state_dict(), "acc": metric, "epoch": epoch}
+        if optimizer is not None:
+            state["optimizer_state_dict"] = optimizer.state_dict()
+
+        if self.scaler is not None:
+            state["scaler_state_dict"] = self.scaler.state_dict()
+
+        if self.ema:
+            state["ema_net"] = self.ema_model.ema.state_dict()
+        # SAVES CURRENT MODEL AS ckpt_latest
+        self.sg_logger.add_checkpoint(tag="ckpt_latest.pth", state_dict=state, global_step=epoch)
+
+        # SAVE MODEL AT SPECIFIC EPOCHS DETERMINED BY save_ckpt_epoch_list
+        if epoch in self.training_params.save_ckpt_epoch_list:
+            self.sg_logger.add_checkpoint(tag=f"ckpt_epoch_{epoch}.pth", state_dict=state, global_step=epoch)
+
+        # OVERRIDE THE BEST CHECKPOINT AND best_metric IF metric GOT BETTER THAN THE PREVIOUS BEST
+        if (metric > self.best_metric and self.greater_metric_to_watch_is_better) or (metric < self.best_metric and not self.greater_metric_to_watch_is_better):
+            # STORE THE CURRENT metric AS BEST
+            self.best_metric = metric
+            self._save_best_checkpoint(epoch, state)
+
+            # RUN PHASE CALLBACKS
+            self.phase_callback_handler.on_validation_end_best_epoch(context)
+
+            if isinstance(metric, torch.Tensor):
+                metric = metric.item()
+            logger.info("Best checkpoint overriden: validation " + self.metric_to_watch + ": " + str(metric))
+
+        if self.training_params.average_best_models:
+            net_for_averaging = self.ema_model.ema if self.ema else self.net
+            state["net"] = self.model_weight_averaging.get_average_model(net_for_averaging, validation_results_tuple=validation_results_tuple)
+            self.sg_logger.add_checkpoint(tag=self.average_model_checkpoint_filename, state_dict=state, global_step=epoch)
+
+    def _save_best_checkpoint(self, epoch, state):
+        if self.ema:
+            best_net = self.ema_model.ema
+            state.pop("ema_net")
+        else:
+            best_net = self.net
+
+        state["net"] = best_net.state_dict()
+        self.sg_logger.add_checkpoint(tag=self.ckpt_best_name, state_dict=state, global_step=epoch)
 
     def run(self, data_loader: torch.utils.data.DataLoader, callbacks=None, silent_mode: bool = False):
         """

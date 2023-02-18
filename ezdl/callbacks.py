@@ -296,7 +296,11 @@ class AuxMetricsUpdateCallback(MetricsUpdateCallback):
         super().__init__(phase=phase)
 
     def __call__(self, context: PhaseContext):
-        metrics_compute_fn_kwargs = {k: v.main if k == "preds" and isinstance(v, ComposedOutput) else v for k, v in context.__dict__.items()}
+        def is_composed_output(x):
+            return isinstance(x, ComposedOutput) or isinstance(x, KDOutput)
+        def get_output(x):
+            return x.main if isinstance(x, ComposedOutput) else x.student_output if isinstance(x, KDOutput) else x
+        metrics_compute_fn_kwargs = {k: get_output(v) if k == "preds" and is_composed_output(v) else v for k, v in context.__dict__.items()}
         context.metrics_compute_fn.update(**metrics_compute_fn_kwargs)
         if context.criterion is not None:
             context.loss_avg_meter.update(context.loss_log_items, len(context.inputs))
