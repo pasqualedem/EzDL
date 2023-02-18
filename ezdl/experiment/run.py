@@ -12,6 +12,8 @@ from codecarbon import EmissionsTracker, OfflineEmissionsTracker
 from ezdl.logger.text_logger import get_logger
 from ezdl.callbacks import MetricsLogCallback, callback_factory
 from ezdl.experiment.kd_seg_trainer import KDSegTrainer
+from ezdl.experiment.ez_trainer import EzTrainer
+from ezdl.experiment.kd_ez_trainer import KDEzTrainer
 from ezdl.experiment.parameters import parse_params
 from ezdl.experiment.seg_trainer import SegmentationTrainer
 from ezdl.utils.utilities import dict_to_yaml_string, values_to_number, nested_dict_update
@@ -57,7 +59,8 @@ class Run:
         self.seg_trainer = None
         try:
             self.parse_params(params)
-            trainer_class = KDSegTrainer if self.kd else SegmentationTrainer
+            # trainer_class = KDSegTrainer if kd else SegmentationTrainer
+            trainer_class = KDEzTrainer if self.kd else EzTrainer
             self.seg_trainer = trainer_class(
                 experiment_name=self.params['experiment']['group'],
                 ckpt_root_dir=self.params['experiment']['tracking_dir'] or 'experiments',
@@ -89,7 +92,8 @@ class Run:
             self.train_params, self.test_params, self.dataset_params, callbacks, kd = parse_params(self.params)
             self.train_callbacks, self.val_callbacks, self.test_callbacks = callbacks
 
-            trainer_class = KDSegTrainer if kd else SegmentationTrainer
+            # trainer_class = KDSegTrainer if kd else SegmentationTrainer
+            trainer_class = KDEzTrainer if kd else EzTrainer
             self.seg_trainer = trainer_class(
                 experiment_name=self.params['experiment']['group'],
                 ckpt_root_dir=self.params['experiment']['tracking_dir'] or 'experiments',
@@ -161,7 +165,7 @@ def train(seg_trainer, train_params, dataset, train_callbacks, val_callbacks):
     ]
     train_params["phase_callbacks"] = cbcks
 
-    seg_trainer.train(train_params)
+    seg_trainer.train(training_params=train_params)
     gc.collect()
 
 

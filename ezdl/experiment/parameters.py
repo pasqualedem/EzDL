@@ -61,23 +61,31 @@ def parse_params(params: dict) -> Tuple[dict, dict, dict, Tuple, dict]:
     train_callbacks = add_phase_in_callbacks(params.get('train_callbacks') or {}, "train")
     test_callbacks = add_phase_in_callbacks(params.get('test_callbacks') or {}, "test")
     val_callbacks = add_phase_in_callbacks(params.get('val_callbacks') or {}, "validation")
-
-    # early stopping
-    if params.get('early_stopping'):
-        val_callbacks['early_stopping'] = params.get('early_stopping')
-
-    es_monitor = recursive_get(val_callbacks, 'early_stopping', 'monitor')
-    if es_monitor == 'loss':
+        
+    # metric to watch
+    mwatch = train_params.get('metric_to_watch')
+    if mwatch == 'loss' or mwatch.split('/')[0] == 'loss':
         if hasattr(loss, 'component_names'):
-            monitor = f'{loss.__class__.__name__}/{loss.__class__.__name__}'
+            if len(mwatch.split('/')) >= 2:
+                mwatch = f'{loss.__class__.__name__}/{mwatch.split("/")[1]}'
+            else:
+                mwatch = f'{loss.__class__.__name__}/{loss.__class__.__name__}'
         else:
-            monitor = loss.__class__.__name__
-        val_callbacks['early_stopping']['monitor'] = monitor
-        monitor = es_monitor.split('/')[-1]
-    if hasattr(loss, 'component_names') and es_monitor in loss.component_names:
-        val_callbacks['early_stopping'][
-            'monitor'
-        ] = f'{loss.__class__.__name__}/{es_monitor}'
+            mwatch = loss.__class__.__name__
+        train_params['metric_to_watch'] = mwatch
+        
+    # early stopping
+    early_stopping = None
+    if params.get('early_stopping'):
+        early_stopping = params.get('early_stopping')
+    elif train_params.get('early_stopping_patience'):
+        early_stopping = {'patience': train_params['early_stopping_patience']}
+    
+    if early_stopping:
+        val_callbacks['early_stopping'] = early_stopping
+        val_callbacks['early_stopping']['monitor'] = mwatch
+        val_callbacks['early_stopping']['mode'] = 'max' if train_params['greater_metric_to_watch_is_better'] else 'min'
+
 
     # knowledge distillation
     kd = params.get("kd")
