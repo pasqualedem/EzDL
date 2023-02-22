@@ -25,6 +25,19 @@ def exp_options(f):
     return functools.reduce(lambda x, opt: opt(x), options, f)
 
 
+@main.command("preview")
+@exp_options
+def experiment(resume, file, dir, grid, run):
+    from ezdl.experiment.experiment import preview
+    param_path = file or 'parameters.yaml'
+    settings = load_yaml(param_path)
+    settings['experiment'] = update_collection(settings['experiment'], resume, key='resume')
+    settings['experiment'] = update_collection(settings['experiment'], grid, key='start_from_grid')
+    settings['experiment'] = update_collection(settings['experiment'], run, key='start_from_run')
+    settings['experiment'] = update_collection(settings['experiment'], dir, key='tracking_dir')
+    preview(settings)
+
+
 @main.command("experiment")
 @exp_options
 def experiment(resume, file, dir, grid, run):

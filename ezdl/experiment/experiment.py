@@ -266,3 +266,13 @@ def experiment(settings: Mapping, param_path: str = "local variable"):
     grid_summary, grids, cartesian_elements = experimenter.calculate_runs(settings)
 
     experimenter.execute_runs()
+
+
+def preview(settings: Mapping, param_path: str = "local varaible"):
+    logger.info(f'Loaded parameters from {param_path}')
+
+    experimenter = Experimenter()
+    grid_summary, grids, cartesian_elements = experimenter.calculate_runs(settings)
+    logger.info(f'Grid summary: \n {grid_summary}\n\n')
+    logger.info(f'Grids: \n {grids}\n\n')
+    logger.info(f'Cartesian elements: \n {cartesian_elements}\n\n')
