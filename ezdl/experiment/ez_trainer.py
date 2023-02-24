@@ -95,7 +95,7 @@ from tqdm import tqdm
 from pprint import pformat
 
 # from ezdl.callbacks import SegmentationVisualizationCallback
-from ezdl.models import MODELS as MODELS_DICT
+from ezdl.models import MODELS as MODELS_DICT, WrappedModel
 from ezdl.callbacks import AuxMetricsUpdateCallback, callback_factory
 from ezdl.utils.utilities import get_module_class_from_path, instantiate_class
 from ezdl.logger.basesg_logger import BaseSGLogger as BaseLogger
@@ -1247,7 +1247,7 @@ class EzTrainer:
 
         if device_config.multi_gpu == MultiGPUMode.DISTRIBUTED_DATA_PARALLEL:
             logger.warning("Warning: distributed training is not supported in re_build_model()")
-        self.net = torch.nn.DataParallel(self.net, device_ids=get_device_ids()) if device_config.multi_gpu else core_utils.WrappedModel(self.net)
+        self.net = torch.nn.DataParallel(self.net, device_ids=get_device_ids()) if device_config.multi_gpu else WrappedModel(self.net)
 
     @property
     def get_module(self):
@@ -1684,8 +1684,8 @@ class EzTrainer:
             local_rank = int(device_config.device.split(":")[1])
             self.net = torch.nn.parallel.DistributedDataParallel(self.net, device_ids=[local_rank], output_device=local_rank, find_unused_parameters=True)
 
-        elif not isinstance(self.net, core_utils.WrappedModel):
-            self.net = core_utils.WrappedModel(self.net)
+        elif not isinstance(self.net, WrappedModel):
+            self.net = WrappedModel(self.net)
         else:
             pass
         

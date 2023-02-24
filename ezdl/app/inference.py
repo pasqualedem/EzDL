@@ -1,5 +1,3 @@
-import os.path
-
 import torch
 from PIL import Image
 from super_gradients.training import StrictLoad
@@ -10,7 +8,7 @@ import torchvision.transforms as transforms
 
 from ezdl.utils.utilities import load_yaml
 
-from ezdl.models import MODELS as MODELS_DICT
+from ezdl.models import MODELS as MODELS_DICT, WrappedModel
 
 
 class Inferencer:
@@ -21,7 +19,7 @@ class Inferencer:
             self.model = MODELS_DICT[name](params)
         else:
             self.model = name
-        self.model = core_utils.WrappedModel(self.model)
+        self.model = WrappedModel(self.model)
         _ = load_checkpoint_to_model(ckpt_local_path=path,
                                      load_backbone=False,
                                      net=self.model,

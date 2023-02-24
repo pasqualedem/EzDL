@@ -55,7 +55,7 @@ from tqdm import tqdm
 from pprint import pformat
 
 # from ezdl.callbacks import SegmentationVisualizationCallback
-from ezdl.models import MODELS as MODELS_DICT
+from ezdl.models import MODELS as MODELS_DICT, WrappedModel
 from ezdl.callbacks import AuxMetricsUpdateCallback, callback_factory
 from ezdl.utils.utilities import get_module_class_from_path, instantiate_class
 from ezdl.logger.basesg_logger import BaseSGLogger as BaseLogger
@@ -442,8 +442,8 @@ class SegmentationTrainer(Trainer):
             local_rank = int(device_config.device.split(":")[1])
             self.net = torch.nn.parallel.DistributedDataParallel(self.net, device_ids=[local_rank], output_device=local_rank, find_unused_parameters=True)
 
-        elif not isinstance(self.net, core_utils.WrappedModel):
-            self.net = core_utils.WrappedModel(self.net)
+        elif not isinstance(self.net, WrappedModel):
+            self.net = WrappedModel(self.net)
         else:
             pass
         

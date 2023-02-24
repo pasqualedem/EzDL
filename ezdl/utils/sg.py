@@ -1,5 +1,5 @@
 import torch
-from super_gradients.training.utils import WrappedModel
+from ezdl.models import WrappedModel
 
 def unwrap_model_from_parallel(model, return_was_wrapped=False):
     """
