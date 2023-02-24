@@ -424,7 +424,7 @@ class EzTrainer:
 
     def train(
         self,
-        model: nn.Module,
+        model: nn.Module = None,
         training_params: dict = None,
         train_loader: DataLoader = None,
         valid_loader: DataLoader = None,
@@ -816,7 +816,7 @@ class EzTrainer:
         self.training_params = TrainingParams()
         self.training_params.override(**training_params)
 
-        self.net = model
+        self.net = model or self.net
         self._prep_net_for_train()
 
         # SET RANDOM SEED
@@ -1768,15 +1768,35 @@ class EzTrainer:
             loss.to(self.device)
         test_phase_callbacks = [callback_factory(name, params, seg_trainer=self, dataset=self.dataset_interface, loader=test_loader)
                                 for name, params in test_phase_callbacks.items()]
-        metrics_values = super().test(model=self.net,
-                                      test_loader=test_loader,
-                                      loss=loss,
-                                      silent_mode=silent_mode,
-                                      test_metrics_list=list(test_metrics.values()),
-                                      loss_logging_items_names=loss_logging_items_names,
-                                      metrics_progress_verbose=metrics_progress_verbose,
-                                      test_phase_callbacks=test_phase_callbacks,
-                                      use_ema_net=use_ema_net)
+
+        test_metrics_list=list(test_metrics.values())
+
+        if use_ema_net and self.ema_model is not None:
+            keep_model = self.net
+            self.net = self.ema_model.ema
+            
+        self._prep_for_test(
+            test_loader=test_loader,
+            loss=loss,
+            test_metrics_list=test_metrics_list,
+            loss_logging_items_names=loss_logging_items_names,
+            test_phase_callbacks=test_phase_callbacks,
+        )
+
+        metrics_values = self.evaluate(
+            data_loader=self.test_loader,
+            metrics=self.test_metrics,
+            evaluation_type=EvaluationType.TEST,
+            silent_mode=silent_mode,
+            metrics_progress_verbose=metrics_progress_verbose,
+        )
+
+        # SWITCH BACK BETWEEN NETS SO AN ADDITIONAL TRAINING CAN BE DONE AFTER TEST
+        if use_ema_net and self.ema_model is not None:
+            self.net = keep_model
+
+        self._first_backward = True
+        
         self.validation = False
 
 

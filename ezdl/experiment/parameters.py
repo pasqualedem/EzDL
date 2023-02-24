@@ -34,9 +34,6 @@ def parse_params(params: dict) -> Tuple[dict, dict, dict, Tuple, dict]:
     # dataset params
     dataset_params = params['dataset']
 
-    if input_train_params.get('metric_to_watch') == 'loss':
-        input_train_params['metric_to_watch'] = loss.__class__.__name__
-
     train_params = {
         **input_train_params,
         "train_metrics_list": list(train_metrics.values()),

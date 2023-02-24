@@ -247,3 +247,11 @@ def instantiate_class(name, params):
         "params" in list(signature(imp_cls).parameters.keys())[0]:
         return imp_cls(params)
     return imp_cls(**params)
+
+
+def load_checkpoint_module_fix(state_dict):
+    if 'net' in state_dict:
+        state_dict = state_dict['net']
+    def remove_starts_with_module(x):
+        return remove_starts_with_module(x[7:]) if x.startswith('module.') else x
+    return {remove_starts_with_module(k): v for k, v in state_dict.items()}

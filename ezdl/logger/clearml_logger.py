@@ -248,3 +248,10 @@ class ClearMLLogger(BaseSGLogger):
 
     def __repr__(self):
         return "ClearMLLogger"
+
+
+def load_weight_from_clearml(task_name, model_name='ckpt_best'):
+    t = Task.get_task(task_name=task_name)
+    model = t.models['output'][model_name]
+    path = model.get_weights()
+    return torch.load(path)
