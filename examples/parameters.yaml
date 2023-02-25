@@ -40,43 +40,34 @@ parameters:
   train_metrics:
     # list of metrics to load from PyTorch metrics
     # where the values are their parameters used for training
-    f1:
+    f1: &metric_params
       average: [macro]
-      num_classes: [10]
+      num_classes: &num_classes  
+        [10]
       mdmc_average: [global]
   test_metrics:
     # list of metrics to load from PyTorch metrics
     # where the values are their parameters used for validation and test
-    f1:
-      num_classes: [10]
-      average: [macro]
-      mdmc_average: [global]
-    precision:
-      average: [macro]
-      num_classes: [10]
-      mdmc_average: [global]
-    recall:
-      average: [macro]
-      num_classes: [10]
-      mdmc_average: [global]
+    f1: *metric_params
+    precision: *metric_params
+    recall: *metric_params
 
   model:
     name: [resnet18]  # path to model class or model name contained in EzDL or super-gradients
     params: # model parameters
       pretrained_weights: [imagenet]
-      num_classes: [10]
+      num_classes: *num_classes
 
   dataset: # parameters depending on the class you defined for the dataset
     channels: [["R", "G", "B"]]
-    num_classes: [10]
+    num_classes: *num_classes
     trainset:
     testset:
-    trainloader:
+    trainloader: &loader_params
       batch_size: [8]
       num_workers: [0]
     testloader:
-      batch_size: [8]
-      num_workers: [0]
+      &loader_params
 
 other_grids:
   # List of supplementary grids (can be empty) in which the parameters defined will override the first grid.

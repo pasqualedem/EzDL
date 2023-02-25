@@ -282,7 +282,7 @@ def experiment(settings: Mapping, param_path: str = "local variable"):
     experimenter.execute_runs()
 
 
-def preview(settings: Mapping, param_path: str = "local varaible"):
+def preview(settings: Mapping, param_path: str = "local variable"):
     print(f'Loaded parameters from {param_path}')
 
     experimenter = Experimenter()

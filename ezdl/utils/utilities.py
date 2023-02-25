@@ -8,7 +8,7 @@ from typing import Any, Mapping
 from inspect import signature
 
 import collections.abc
-from ruamel.yaml import YAML
+from ruamel.yaml import YAML, comments
 import torch
 
 #
@@ -121,16 +121,31 @@ def yaml_string_to_dict(s):
 
 def load_yaml(path, return_string=False):
     if hasattr(path, "readlines"):
-        d = YAML(typ='safe', pure=True).load(path)
+        d = convert_commentedmap_to_dict(YAML().load(path))
         if return_string:
             path.seek(0)
             return d, path.read().decode('utf-8')
     with open(path, 'r') as param_stream:
-        d = YAML(typ='safe', pure=True).load(param_stream)
+        d = convert_commentedmap_to_dict(YAML().load(param_stream))
         if return_string:
             param_stream.seek(0)
             return d, str(param_stream.read())
     return d
+
+
+def convert_commentedmap_to_dict(data):
+    """
+    Recursive function to convert CommentedMap to dict
+    """
+    if isinstance(data, comments.CommentedMap):
+        result = {}
+        for key, value in data.items():
+            result[key] = convert_commentedmap_to_dict(value)
+        return result
+    elif isinstance(data, list):
+        return [convert_commentedmap_to_dict(item) for item in data]
+    else:
+        return data
 
 
 def dict_to_yaml(d: Mapping):
