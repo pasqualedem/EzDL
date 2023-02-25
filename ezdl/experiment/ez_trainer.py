@@ -26,7 +26,6 @@ from super_gradients.common.factories.callbacks_factory import CallbacksFactory
 from super_gradients.common.factories.list_factory import ListFactory
 from super_gradients.common.factories.losses_factory import LossesFactory
 from super_gradients.common.factories.metrics_factory import MetricsFactory
-from super_gradients.common.factories.pre_launch_callbacks_factory import PreLaunchCallbacksFactory
 from super_gradients.common.sg_loggers import SG_LOGGERS
 from super_gradients.common.sg_loggers.abstract_sg_logger import AbstractSGLogger
 from super_gradients.common.sg_loggers.base_sg_logger import BaseSGLogger
@@ -308,7 +307,8 @@ class EzTrainer:
         }
         try:
             model = instantiate_class(model_params['name'], arch_params)
-        except (AttributeError, ValueError):
+        except (AttributeError, ValueError) as ex:
+            logger.warn(f"Failed to instantiate model {model_params['name']}, trying to load from models dict. Error: {ex}")
             if model_params['name'] in MODELS_DICT.keys():
                 model = MODELS_DICT[model_params['name']](arch_params)
             else:
