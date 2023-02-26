@@ -35,10 +35,6 @@ class GridSummary:
         self.total_runs_excl_grid = d.get("total_runs_excl_grid") or self.total_runs_excl_grid
         self.total_runs_to_run = d.get("total_runs_to_run") or self.total_runs_to_run
         self.total_runs_excl = d.get("total_runs_excl") or self.total_runs_to_run
-        
-    def to_series(self):
-        series = pd.Series(self.__dict__)
-        return series
 
 
 class ExpSettings(EasyDict):
@@ -68,11 +64,6 @@ class ExpSettings(EasyDict):
         self.group = e.group or self.group
         self.logger = e.logger or self.logger
         self.continue_with_errors = not e.continue_with_errors or self.continue_with_errors
-        
-    def to_series(self):
-        series = pd.Series(self)
-        series = series.drop(['to_series'])
-        return series
 
 
 class Status:
@@ -290,7 +281,7 @@ def preview(settings: Mapping, param_path: str = "local variable"):
     
     
 def print_preview(experimenter, grid_summary, grids, cartesian_elements):
-    summary_series = pd.concat([grid_summary.to_series(), experimenter.exp_settings.to_series()])
+    summary_series = pd.concat([pd.Series(grid_summary), pd.Series(experimenter.exp_settings.__dict__)])
     summary_string = f"\n{summary_series.to_string()}\n"
     
     dfs = [pd.DataFrame(linearized_to_string(dot_element), columns=[f"Grid {i}", f"N. runs: {len(grid)}"])
