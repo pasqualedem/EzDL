@@ -64,7 +64,7 @@ def parse_params(params: dict) -> Tuple[dict, dict, dict, Tuple, dict]:
     if mwatch == 'loss' or mwatch.split('/')[0] == 'loss':
         if hasattr(loss, 'component_names'):
             if len(mwatch.split('/')) >= 2:
-                mwatch = f'{loss.__class__.__name__}/{mwatch.split("/")[1]}'
+                mwatch = f'{loss.__class__.__name__}/{"/".join(mwatch.split("/")[1:])}'
             else:
                 mwatch = f'{loss.__class__.__name__}/{loss.__class__.__name__}'
         else:

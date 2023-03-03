@@ -96,6 +96,7 @@ def app(resume, file, dir, grid, run):
 
 
 @main.command("complexity")
-def complexity():
-    from ezdl.complexity import complexity
-    complexity()
+@click.option("--file", default="", help='Set the file to load the models from')
+def complexity(file):
+    from ezdl.complexity import complexity as cpx
+    cpx(file)
