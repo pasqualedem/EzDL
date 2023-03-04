@@ -12,3 +12,7 @@ class Cifar10(DatasetInterface):
                                            dataloader_params=dataset_params['testloader'])
         self.val_loader = dataloaders.get("cifar10_val", dataset_params=dataset_params['testset'],
                                            dataloader_params=dataset_params['testloader'])
+        
+    @property
+    def size(self):
+        return (3, 32, 32)

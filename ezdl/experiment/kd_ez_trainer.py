@@ -62,6 +62,10 @@ class KDEzTrainer(EzTrainer):
         super().init_model(params, resume, checkpoint_path)
 
         self.net = self._load_kd_module(params['kd']['module'], student=self.net, teacher=self.teacher_architecture)
+        
+    def print_model_summary(self, model=None):
+        logger.info("Student model summary:")
+        return super().print_model_summary(model.student)
 
     def _save_best_checkpoint(self, epoch, state):
         """

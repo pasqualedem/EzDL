@@ -69,6 +69,7 @@ class Run:
                     (params['dataset_interface'], dataset_params=deepcopy(self.dataset_params))
             self.seg_trainer.init_model(params, False, None)
             self.seg_trainer.init_loggers({"in_params": params}, deepcopy(self.train_params))
+            self.seg_trainer.print_model_summary()
             logger.info(f"Input params: \n\n {dict_to_yaml_string(params)}")
             self._init_carbon_tracker()
         except Exception as e:

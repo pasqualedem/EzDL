@@ -33,6 +33,7 @@ setuptools.setup(
         "opencv-python",
         "plotly",
         "Pillow",
+        "ptflops",
         "ruamel.yaml",
         "scipy",
         "super-gradients",

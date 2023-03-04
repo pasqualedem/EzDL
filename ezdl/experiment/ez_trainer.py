@@ -17,6 +17,7 @@ from torch.utils.data import DataLoader, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
 
 from piptools.scripts.sync import _get_installed_distributions
+from ptflops import get_model_complexity_info
 
 from super_gradients.common.abstractions.abstract_logger import get_logger
 from super_gradients.common.data_types.enum import MultiGPUMode, StrictLoad, EvaluationType
@@ -349,6 +350,16 @@ class EzTrainer:
             # UPDATE TRAINING PARAMS IF THEY EXIST & WE ARE NOT LOADING AN EXTERNAL MODEL's WEIGHTS
             self.best_metric = self.checkpoint['acc'] if 'acc' in self.checkpoint.keys() else -1
             self.start_epoch = self.checkpoint['epoch'] if 'epoch' in self.checkpoint.keys() else 0
+            
+    def print_model_summary(self, model=None):
+        net = self.net if model is None else model
+        logger.info("Model summary:")
+        size = (3, 224, 224)
+        if hasattr(self.dataset_interface, "size"):
+            size = self.dataset_interface.size
+        macs, params = get_model_complexity_info(net, size, as_strings=True,
+                                        print_per_layer_stat=True, verbose=True)
+        logger.info(f"Total MACs: {macs}, Total params: {params}")
 
     def _load_checkpoint_to_model(self):  # noqa: C901 - too complex
         """
