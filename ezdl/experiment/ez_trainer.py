@@ -353,13 +353,17 @@ class EzTrainer:
             
     def print_model_summary(self, model=None):
         net = self.net if model is None else model
-        logger.info("Model summary:")
         size = (3, 224, 224)
         if hasattr(self.dataset_interface, "size"):
             size = self.dataset_interface.size
+        logger.info(f"Model summary: with input size {size}")
         macs, params = get_model_complexity_info(net, size, as_strings=True,
-                                        print_per_layer_stat=True, verbose=True)
-        logger.info(f"Total MACs: {macs}, Total params: {params}")
+                                        print_per_layer_stat=True, verbose=True, 
+                                        flops_units="GMac", param_units="M")
+        logger.info(f"Total GMacs: {macs}, Total params: {params}")
+        macs = float(macs.split(" ")[0])
+        params = float(params.split(" ")[0])
+        self.sg_logger.add_summary({"GMacs": macs, "Mparams": params})
 
     def _load_checkpoint_to_model(self):  # noqa: C901 - too complex
         """
