@@ -234,7 +234,7 @@ class MetricsLogCallback(PhaseCallback):
             param context: context of the current phase
         """
         if self.phase == Phase.TRAIN_EPOCH_END:
-            context.sg_logger.add_scalar('epoch', context.epoch)
+            context.sg_logger.add_summary({'epoch': context.epoch})
         if context.epoch % self.freq == 0:
             context.sg_logger.add_scalars({self.prefix + k: v for k, v in context.metrics_dict.items()})
 

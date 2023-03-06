@@ -8,6 +8,7 @@ import pandas as pd
 from ezdl.experiment.run import Run
 
 from ezdl.logger.text_logger import get_logger
+from ezdl.logger import LOGGERS
 
 logger = get_logger(__name__)
 
@@ -43,20 +44,9 @@ def resume_run(wandb_run, updated_config, stage):
 
 
 def get_interrupted_run(input_settings):
-    namespace = input_settings["name"]
-    group = input_settings["group"]
-    last_run = wandb.Api().runs(path=namespace, filters={"group": group,}, order="-created_at")[0]
-    filters = {"group": group, "name": last_run.id}
-    stage = ["train", "test"]
-    updated_config = None
-    api = wandb.Api()
-    runs = api.runs(path=namespace, filters=filters)
-    if len(runs) == 0:
-        raise RuntimeError("No runs found")
-    if len(runs) > 1:
-        raise EnvironmentError("More than 1 run???")
+    logger_run, updated_config, stage = LOGGERS[input_settings['logger']].get_interrupted_run(input_settings)
     to_resume_run = Run()
-    to_resume_run.resume(wandb_run=runs[0], updated_config=updated_config, phases=stage)
+    to_resume_run.resume(logger_run=logger_run, updated_config=updated_config, phases=stage)
     return to_resume_run
 
 
@@ -75,7 +65,7 @@ def retrieve_run_to_resume(settings, grids):
             logger.info(e)
             raise ValueError('No experiment to resume!!')
         else:
-            return len(grids), None, True
+            return None, None, True
     resume_last = not finished
     return start_grid, start_run, resume_last
 

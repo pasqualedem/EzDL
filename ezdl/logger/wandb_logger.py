@@ -10,7 +10,7 @@ from PIL import Image
 from matplotlib import pyplot as plt
 from super_gradients.common.environment.ddp_utils import multi_process_safe
 
-from ezdl.logger.basesg_logger import BaseSGLogger
+from ezdl.logger.basesg_logger import AbstractRunWrapper, BaseSGLogger
 from ezdl.logger.text_logger import get_logger
 
 
@@ -190,7 +190,7 @@ class WandBSGLogger(BaseSGLogger):
         wandb.log({tag: table})
 
     @multi_process_safe
-    def close(self, really=False):
+    def close(self, really=False, failed=False):
         if really:
             super().close()
             wandb.finish()
@@ -317,3 +317,59 @@ class WandBSGLogger(BaseSGLogger):
 
     def __repr__(self):
         return "WandbSGLogger"
+    
+    @classmethod
+    def get_interrupted_run(cls, input_settings):
+        namespace = input_settings["name"]
+        group = input_settings["group"]
+        last_run = wandb.Api().runs(path=namespace, filters={"group": group,}, order="-created_at")[0]
+        filters = {"group": group, "name": last_run.id}
+        stage = ["train", "test"]
+        updated_config = None
+        api = wandb.Api()
+        runs = api.runs(path=namespace, filters=filters)
+        if len(runs) == 0:
+            raise RuntimeError("No runs found")
+        if len(runs) > 1:
+            raise EnvironmentError("More than 1 run???")
+        return WandbRunWrapper(runs[0]), updated_config, stage
+
+
+class WandbRunWrapper(AbstractRunWrapper):
+    def __init__(self, wandb_run) -> None:
+        super().__init__()
+        self.wadb_run = wandb_run
+        
+    def get_params(self):
+        return self.wadb_run.config.get("in_params")
+    
+    def update_params(self, params):
+        self.wandb_run.config['in_params'] = params
+        self.wandb_run.update()
+        
+    def get_summary(self):
+        return self.wandb_run.summary
+    
+    def get_local_checkpoint_path(self, phases):
+        track_dir = self.get_params().get('experiment').get('tracking_dir') or 'experiments'
+        checkpoint_path_group = os.path.join(track_dir, self.group, 'experiments')
+        run_folder = list(filter(lambda x: str(self.id) in x, os.listdir(checkpoint_path_group)))
+        checkpoint_path = None
+        if 'epoch' in self.get_summary():
+            ckpt = 'ckpt_latest.pth' if 'train' in phases else 'ckpt_best.pth'
+            try:
+                checkpoint_path = os.path.join(checkpoint_path_group, run_folder[0], 'files', ckpt)
+            except IndexError as exc:
+                logger.error(f"{self.id} not found in {checkpoint_path_group}")
+                raise ValueError(
+                    f"{self.id} not found in {checkpoint_path_group}"
+                ) from exc
+        return checkpoint_path
+    
+    @property
+    def id(self):
+        return self.wandb_run.id
+    
+    @property
+    def group(self):
+        return self.wandb_run.group

@@ -149,7 +149,8 @@ class Experimenter:
 
         for i, grid in enumerate(self.grids):
             info = f'Found {len(grid)} runs from grid {i}'
-            if i < self.exp_settings.start_from_grid:
+            last_grid = self.exp_settings.start_from_grid if self.exp_settings.start_from_grid is not None else len(self.grids)
+            if i < last_grid:
                 info += f', skipping grid {i} with {len(grid)} runs'
             logger.info(info)
         self.generate_grid_summary()
@@ -169,10 +170,14 @@ class Experimenter:
 
     def generate_grid_summary(self):
         total_runs = sum(len(grid) for grid in self.grids)
-        total_runs_excl_grid = total_runs - sum(
-            len(grid) for grid in self.grids[self.exp_settings.start_from_grid :]
-        )
-        total_runs_excl = total_runs_excl_grid + self.exp_settings.start_from_run
+        if self.exp_settings.start_from_grid is None:
+            total_runs_excl_grid = total_runs - len(self.grids[-1])
+            total_runs_excl = total_runs
+        else:
+            total_runs_excl_grid = total_runs - sum(
+                len(grid) for grid in self.grids[self.exp_settings.start_from_grid :]
+            )
+            total_runs_excl = total_runs_excl_grid + self.exp_settings.start_from_run
         total_runs_to_run = total_runs - total_runs_excl
         self.gs = GridSummary(
             total_runs=total_runs,
@@ -190,10 +195,14 @@ class Experimenter:
         status_manager = StatusManager(len(self.grids))
         if self.exp_settings.resume_last:
             logger.info("+ another run to finish!")
-            grid_len = len(self.grids[self.exp_settings.start_from_grid])
             grid_list = [(i, j) for i in range(len(self.grids)) for j in range(len(self.grids[i]))]
-            index = grid_list.index((self.exp_settings.start_from_grid, self.exp_settings.start_from_run))
-            sg, sr = grid_list[index - 1]
+            if self.exp_settings.start_from_grid is None:
+                grid_len = len(self.grids[-1])
+                sg, sr = grid_list[-1]
+            else:
+                grid_len = len(self.grids[self.exp_settings.start_from_grid])
+                index = grid_list.index((self.exp_settings.start_from_grid, self.exp_settings.start_from_run))
+                sg, sr = grid_list[index - 1]
             try:
                 exp_log.insert_run(sg, sr)
                 run = get_interrupted_run(self.exp_settings)

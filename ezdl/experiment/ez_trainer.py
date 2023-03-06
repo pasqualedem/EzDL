@@ -64,7 +64,6 @@ from super_gradients.training.utils.checkpoint_utils import (
     read_ckpt_state_dict,
     load_checkpoint_to_model,
     load_pretrained_weights,
-    get_checkpoints_dir_path,
 )
 from super_gradients.training.utils.distributed_training_utils import (
     MultiGPUModeAutocastWrapper,
@@ -98,6 +97,7 @@ from pprint import pformat
 from ezdl.models import MODELS as MODELS_DICT, WrappedModel
 from ezdl.callbacks import AuxMetricsUpdateCallback, callback_factory
 from ezdl.utils.utilities import get_module_class_from_path, instantiate_class
+from ezdl.utils.folders import get_checkpoints_dir_path
 from ezdl.logger.basesg_logger import BaseSGLogger as BaseLogger
 from ezdl.logger import LOGGERS
 from ezdl.logger.text_logger import get_logger
@@ -106,10 +106,10 @@ logger = get_logger(__name__)
 
 
 class EzTrainer:
-    def __init__(self, experiment_name, ckpt_root_dir=None, model_checkpoints_location: str = 'local', num_devices=1, multi_gpu=MultiGPUMode.AUTO, device: str = None, **kwargs):
+    def __init__(self, project_name, group_name="", ckpt_root_dir=None, model_checkpoints_location: str = 'local', num_devices=1, multi_gpu=MultiGPUMode.AUTO, device: str = None, **kwargs):
         """
 
-        :param experiment_name:                      Used for logging and loading purposes
+        :param experiment_project:              Used for logging and loading purposes
         :param device:                          If equal to 'cpu' runs on the CPU otherwise on GPU
         :param multi_gpu:                       If True, runs on all available devices
                                                 otherwise saves the Checkpoints Locally
@@ -178,10 +178,11 @@ class EzTrainer:
         self.greater_valid_metrics_is_better: Dict[str, bool] = {}
 
         # SETTING THE PROPERTIES FROM THE CONSTRUCTOR
-        self.experiment_name = experiment_name
+        self.project_name = project_name
+        self.group_name = group_name
         self.ckpt_name = None
 
-        self.checkpoints_dir_path = get_checkpoints_dir_path(experiment_name, ckpt_root_dir)
+        self.checkpoints_dir_path = get_checkpoints_dir_path(project_name, group_name, ckpt_root_dir)
         self.phase_callback_handler: CallbackHandler = None
 
         # SET THE DEFAULTS
@@ -382,7 +383,7 @@ class EzTrainer:
             # GET LOCAL PATH TO THE CHECKPOINT FILE FIRST
             ckpt_local_path = get_ckpt_local_path(
                 source_ckpt_folder_name=self.source_ckpt_folder_name,
-                experiment_name=self.experiment_name,
+                experiment_name=self.project_name,
                 ckpt_name=self.ckpt_name,
                 external_checkpoint_path=self.external_checkpoint_path,
             )
@@ -428,7 +429,7 @@ class EzTrainer:
         self.external_checkpoint_path = core_utils.get_param(self.training_params, "resume_path")
         self.load_checkpoint = self.load_checkpoint or self.external_checkpoint_path is not None
         self.ckpt_name = core_utils.get_param(self.training_params, "ckpt_name", "ckpt_latest.pth")
-        self._load_checkpoint_to_model()
+        # self._load_checkpoint_to_model()
 
     def _init_arch_params(self):
         default_arch_params = HpmStruct()
@@ -946,7 +947,7 @@ class EzTrainer:
 
         sg_trainer_utils.log_uncaught_exceptions(logger)
 
-        if not self.load_checkpoint or self.load_weights_only:
+        if not self.sg_logger.resumed or self.load_weights_only:
             # WHEN STARTING TRAINING FROM SCRATCH, DO NOT LOAD OPTIMIZER PARAMS (EVEN IF LOADING BACKBONE)
             self.start_epoch = 0
             self._reset_best_metric()
@@ -999,7 +1000,7 @@ class EzTrainer:
         context = PhaseContext(
             optimizer=self.optimizer,
             net=self.net,
-            experiment_name=self.experiment_name,
+            experiment_name=self.project_name,
             ckpt_dir=self.checkpoints_dir_path,
             criterion=self.criterion,
             lr_warmup_epochs=self.training_params.lr_warmup_epochs,
@@ -1864,18 +1865,20 @@ class EzTrainer:
         """
         self.phase_callbacks.append(MetricsUpdateCallback(phase))
 
-    def _initialize_sg_logger_objects(self, additional_configs_to_log: Dict = None):
+    def _initialize_sg_logger_objects(self, logger_run=None, additional_configs_to_log: Dict = None):
         if not self.train_initialized:
             self.train_initialized = True
             # OVERRIDE SOME PARAMETERS TO MAKE SURE THEY MATCH THE TRAINING PARAMETERS
             general_sg_logger_params = {  # 'experiment_name': self.experiment_name,
                 'experiment_name': '',
-                'group': self.experiment_name,
+                'project': self.project_name,
+                'group': self.group_name,
                 'storage_location': self.model_checkpoints_location,
                 'resumed': self.load_checkpoint,
                 'training_params': self.training_params,
                 'checkpoints_dir_path': self.checkpoints_dir_path,
-                'run_id': self.run_id
+                'run_id': self.run_id,
+                'run': logger_run,
             }
             sg_logger = core_utils.get_param(self.training_params, 'sg_logger')
 
@@ -1922,14 +1925,15 @@ class EzTrainer:
                      in_params: Mapping = None,
                      train_params: Mapping = None,
                      init_sg_loggers: bool = True,
-                     run_id=None) -> None:
+                     run_id=None,
+                     logger_run=None) -> None:
 
         self.run_id = run_id
         if self.training_params is None:
             self.training_params = TrainingParams()
         self.training_params.override(**train_params)
         if init_sg_loggers:
-            self._initialize_sg_logger_objects()
+            self._initialize_sg_logger_objects(logger_run=logger_run)
         if self.phase_callbacks is None:
             self.phase_callbacks = []
         self.phase_callback_handler = CallbackHandler(self.phase_callbacks)

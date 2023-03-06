@@ -22,8 +22,8 @@ parameters:
       name: [cross_entropy] # class loss name
       params:
     seed: [42] # random seed to set
-    max_epochs: [ 1, 2 ]
-    initial_lr: [ 0.0001 ]
+    max_epochs: [ 10 ]
+    initial_lr: [ 0.0001, 0.01 ]
     optimizer: [ Adam ]
     zero_weight_decay_on_bias_and_bn: [ True ]
     average_best_models: [ False ]
@@ -59,6 +59,7 @@ parameters:
       num_classes: *num_classes
 
   dataset: # parameters depending on the class you defined for the dataset
+    reduce: [True]
     channels: [["R", "G", "B"]]
     num_classes: *num_classes
     trainset:
@@ -67,7 +68,7 @@ parameters:
       batch_size: [8]
       num_workers: [0]
     testloader:
-      &loader_params
+      *loader_params
 
 other_grids:
   # List of supplementary grids (can be empty) in which the parameters defined will override the first grid.

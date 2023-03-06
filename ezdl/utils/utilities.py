@@ -170,9 +170,12 @@ def values_to_number(collec) -> Any:
         return collec
     else:
         try:
-            return float(collec)
+            return int(collec)
         except (ValueError, TypeError):
-            pass
+            try:
+                return float(collec)
+            except (ValueError, TypeError):
+                pass
     return collec
 
 

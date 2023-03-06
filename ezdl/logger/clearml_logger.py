@@ -14,7 +14,7 @@ from matplotlib import pyplot as plt
 from super_gradients.common.environment.ddp_utils import multi_process_safe
 from clearml import Task, OutputModel, Model
 
-from ezdl.logger.basesg_logger import BaseSGLogger
+from ezdl.logger.basesg_logger import AbstractRunWrapper, BaseSGLogger
 from ezdl.logger.text_logger import get_logger
 from ezdl.utils.segmentation import tensor_to_segmentation_image
 
@@ -26,10 +26,10 @@ WANDB_INCLUDE_FILE_NAME = '.wandbinclude'
 
 class ClearMLLogger(BaseSGLogger):
 
-    def __init__(self, project_name: str, experiment_name: str, storage_location: str, resumed: bool,
+    def __init__(self, project: str, experiment_name: str, storage_location: str, resumed: bool,
                  training_params: dict, checkpoints_dir_path: str, tb_files_user_prompt: bool = False,
                  launch_tensorboard: bool = False, tensorboard_port: int = None, save_checkpoints_remote: bool = True,
-                 save_tensorboard_remote: bool = True, save_logs_remote: bool = True, entity: Optional[str] = None,
+                 save_tensorboard_remote: bool = True, run: Task = None, entity: Optional[str] = None,
                  api_server: Optional[str] = None, save_code: bool = False, tags=None, run_id=None, **kwargs):
         """
 
@@ -49,32 +49,35 @@ class ClearMLLogger(BaseSGLogger):
         self.s3_location_available = storage_location.startswith('s3')
         self.resumed = resumed
         resume = 'must' if resumed else None
-        os.makedirs(checkpoints_dir_path, exist_ok=True)
         if kwargs.get("group"):
-            project_name = f"{project_name}/{kwargs.get('group')}"
+            project = f"{project}/{kwargs.get('group')}"
         if not experiment_name:
             experiment_name = check_output(["adjectiveanimalnumber"]).decode().rstrip("\n").rstrip("\r")
 
-        self.run = Task.init(project_name=project_name,
-                             task_name=experiment_name,
-                             auto_connect_frameworks=False,
-                             continue_last_task=resume,
-                             output_uri=True
-                             )
+        if run is not None:
+            self.run = run.clearml_task
+            experiment_name = run.clearml_task.name
+        else:
+            self.run = Task.init(project_name=project,
+                                task_name=experiment_name,
+                                auto_connect_frameworks=False,
+                                continue_last_task=resume,
+                                output_uri=True
+                                )
         if save_code:
             self._save_code()
-
+            
+        checkpoints_dir_path = f"{checkpoints_dir_path}/{experiment_name}"
+        
         self.save_checkpoints_wandb = save_checkpoints_remote
         self.save_tensorboard_wandb = save_tensorboard_remote
-        super().__init__(project_name, experiment_name, storage_location, resumed, training_params,
+        super().__init__(project, experiment_name, storage_location, resumed, training_params,
                          checkpoints_dir_path, tb_files_user_prompt, launch_tensorboard, tensorboard_port,
                          self.s3_location_available, self.s3_location_available, self.s3_location_available)
-        self._local_dir = f"{self._local_dir}/{experiment_name}"
-        self._make_dir()
 
     @multi_process_safe
     def add_config(self, tag: str = None, config: dict = None):
-        self.run.connect(config, name=tag)
+        self.run.connect(fix_clearml_empty_map(config), name=tag)
 
     @multi_process_safe
     def add_scalar(self, tag: str, scalar_value: float, global_step: int = 0):
@@ -148,12 +151,15 @@ class ClearMLLogger(BaseSGLogger):
             )
 
     @multi_process_safe
-    def close(self, really=False):
+    def close(self, really=False, failed=False):
         if really:
-            OutputModel.wait_for_uploads()
-            shutil.rmtree(self._local_dir)
             super().close()
-            self.run.close()
+            OutputModel.wait_for_uploads()
+            if failed:
+                self.run.mark_failed()
+            else:
+                shutil.rmtree(self._local_dir)
+                self.run.close()
 
 
     @multi_process_safe
@@ -249,9 +255,80 @@ class ClearMLLogger(BaseSGLogger):
     def __repr__(self):
         return "ClearMLLogger"
 
+    @classmethod
+    def get_interrupted_run(cls, input_settings):
+        namespace = input_settings["name"]
+        group = input_settings["group"]
+        project = namespace + "/" + group
+        last_run = Task.get_task(project_name=project)
+        stage = ["train", "test"]
+        updated_config = None
+        return ClearmlRunWrapper(last_run), updated_config, stage
+    
 
+class ClearmlRunWrapper(AbstractRunWrapper):
+    def __init__(self, clearml_task: Task) -> None:
+        super().__init__()
+        clearml_task.mark_started(force=True)
+        self.clearml_task = clearml_task
+        
+    def get_params(self):
+        return restore_clearml_empty_map(
+            self.clearml_task.get_parameters_as_dict().get("General").get("in_params")
+        )
+    
+    def update_params(self, params):
+        conf = self.clearml_task.get_parameters_as_dict()
+        conf['General']['in_params'] = params
+        self.clearml_task.set_parameters_as_dict(conf)
+        
+    def get_summary(self):
+        return self.clearml_task.get_reported_single_values()
+    
+    @property
+    def id(self):
+        return self.clearml_task.id
+    
+    @property
+    def group(self):
+        return self.clearml_task.get_project_name().split("/")[0]
+
+    def get_local_checkpoint_path(self, phases):
+        track_dir = self.get_params().get('experiment').get('tracking_dir') or 'experiments'
+        checkpoint_path_group = os.path.join(track_dir, self.clearml_task.get_project_name(), self.clearml_task.name)
+        checkpoint_path = None
+        if 'epoch' in self.get_summary():
+            ckpt = 'ckpt_latest.pth' if 'train' in phases else 'ckpt_best.pth'
+            if os.path.exists(os.path.join(checkpoint_path_group, ckpt)):
+                checkpoint_path = os.path.join(checkpoint_path_group, ckpt)
+            else:
+                logger.error(f"{self.clearml_task.name} not found in {checkpoint_path_group}")
+                raise ValueError(
+                    f"{self.clearml_task.name} not found in {checkpoint_path_group}"
+                )
+        return checkpoint_path
+    
+    
 def load_weight_from_clearml(task_name, model_name='ckpt_best'):
     t = Task.get_task(task_name=task_name)
     model = t.models['output'][model_name]
     path = model.get_weights()
     return torch.load(path)
+
+
+def fix_clearml_empty_map(dictionary):
+    if dictionary == {}:
+        return '__empty__'
+    for k, v in dictionary.items():
+        if isinstance(v, dict):
+            dictionary[k] = fix_clearml_empty_map(v)
+    return dictionary
+
+
+def restore_clearml_empty_map(dictionary):
+    for k, v in dictionary.items():
+        if isinstance(v, dict):
+            dictionary[k] = restore_clearml_empty_map(v)
+        elif v == '__empty__':
+            dictionary[k] = {}
+    return dictionary
