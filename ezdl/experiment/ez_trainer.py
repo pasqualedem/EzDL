@@ -1388,7 +1388,7 @@ class EzTrainer:
                 outputs = self._forward_step(inputs, targets, additional_batch_items)
 
                 # COMPUTE THE LOSS FOR BACK PROP + EXTRA METRICS COMPUTED DURING THE LOSS FORWARD PASS
-                loss, loss_log_items = self._get_losses(outputs, targets)
+                loss, loss_log_items = self._get_losses(outputs, targets, context)
 
             context.update_context(preds=outputs, loss_log_items=loss_log_items)
             self.phase_callback_handler.on_train_batch_loss_end(context)
@@ -1471,10 +1471,12 @@ class EzTrainer:
             # RUN PHASE CALLBACKS
             self.phase_callback_handler.on_train_batch_gradient_step_end(context)
 
-    def _get_losses(self, outputs: torch.Tensor, targets: torch.Tensor) -> Tuple[torch.Tensor, tuple]:
+    def _get_losses(self, outputs: torch.Tensor, targets: torch.Tensor, context) -> Tuple[torch.Tensor, tuple]:
         # GET THE OUTPUT OF THE LOSS FUNCTION
         if self.validation and core_utils.get_param(self.training_params, "inform_loss_in_validaiton", False):
             loss = self.criterion(outputs, targets, validation=self.validation)
+        elif core_utils.get_param(self.training_params, "pass_context_to_loss", False):
+            loss = self.criterion(outputs, targets, context)
         else:
             loss = self.criterion(outputs, targets)
         if isinstance(loss, tuple):
@@ -1630,7 +1632,7 @@ class EzTrainer:
 
                 if self.criterion is not None:
                     # STORE THE loss_items ONLY, THE 1ST RETURNED VALUE IS THE loss FOR BACKPROP DURING TRAINING
-                    loss_tuple = self._get_losses(output, targets)[1].cpu()
+                    loss_tuple = self._get_losses(output, targets, context)[1].cpu()
                     context.update_context(loss_log_items=loss_tuple)
 
                 # TRIGGER PHASE CALLBACKS CORRESPONDING TO THE EVALUATION TYPE

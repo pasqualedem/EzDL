@@ -64,6 +64,7 @@ class KDEzTrainer(EzTrainer):
         self.net = self._load_kd_module(params['kd']['module'], student=self.net, teacher=self.teacher_architecture)
         
     def print_model_summary(self, model=None):
+        model = model or self.net
         logger.info("Student model summary:")
         return super().print_model_summary(model.student)
 

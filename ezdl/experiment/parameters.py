@@ -22,7 +22,8 @@ def parse_params(params: dict) -> Tuple[dict, dict, dict, Tuple, dict]:
     loss = instiantiate_loss(loss_params['name'], loss_params['params'])
 
     if "kd" in params:
-        loss = init_composed_loss(loss, params["kd"]["loss"])
+        if "loss" in params["kd"]:
+            loss = init_composed_loss(loss, params["kd"]["loss"])
 
     if "aux_loss" in params:
         loss = init_composed_loss(loss, params["aux_loss"])
