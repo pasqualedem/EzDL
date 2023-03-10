@@ -179,6 +179,7 @@ class ClearMLLogger(BaseSGLogger):
         models = [model.name for model in self.run.models['output']] 
         if name in models:
             model = self.run.models['output'][models.index(name)]
+            OutputModel.wait_for_uploads()
             Model.remove(model)
         model = OutputModel(task=self.run, name=name)
         path = os.path.join(self._local_dir, name)
