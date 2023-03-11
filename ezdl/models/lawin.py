@@ -43,7 +43,7 @@ class BaseLawin(BaseModel):
         pretrained_mode = get_param(pretrained, "source", "clearml")
         if pretrained_mode == "clearml":
             from ezdl.logger.clearml_logger import load_weight_from_clearml
-            pretrained_run = get_param(pretrained, "run", None)
+            pretrained_run = pretrained['run']
             weights = load_weight_from_clearml(pretrained_run)
         else:
             raise NotImplementedError("Only clearml mode is supported for pretrained weights")

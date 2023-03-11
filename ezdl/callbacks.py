@@ -10,6 +10,8 @@ from super_gradients.training.utils.early_stopping import EarlyStop
 from super_gradients.training.utils.utils import AverageMeter
 from super_gradients.training.models.kd_modules.kd_module import KDOutput
 from PIL import ImageColor, Image
+import plotly.graph_objs as go
+from plotly.subplots import make_subplots
 
 from ezdl.models import ComposedOutput
 
@@ -129,7 +131,7 @@ class SegmentationVisualization:
                         num_classes,
                         batch_name: Union[int, str],
                         undo_preprocessing_func: Callable[[torch.Tensor], np.ndarray] = lambda x: x,
-                        image_scale: float = 1.,
+                        use_plotly: bool = False,
                         prefix: str = '',
                         names: List[str] = None,
                         iteration: int = 0):
@@ -159,50 +161,46 @@ class SegmentationVisualization:
             preds = pred_mask[i].detach().cpu().numpy()
             targets = target_mask[i].detach().cpu().numpy()
 
-            img, mask_dict = SegmentationVisualization._visualize_image(image_np[i], preds, targets, num_classes)
-            if prefix == 'val':
-                logger.add_mask(names[i], img, mask_dict, global_step=iteration)
+            if use_plotly:
+                fig = SegmentationVisualization.visualize_with_plotly(image_np[i], preds, targets, num_classes)
+                if prefix == 'val':
+                    logger.add_plotly_figure(names[i], fig, global_step=iteration)
+                else:
+                    logger.add_plotly_figure(names[i], fig)
             else:
-                logger.add_image_mask_to_sequence(SegmentationVisualizationCallback.test_sequence_name,
-                                                  names[i], img, mask_dict)
+                img, mask_dict = SegmentationVisualization._visualize_image(image_np[i], preds, targets, num_classes)
+                if prefix == 'val':
+                    logger.add_mask(names[i], img, mask_dict, global_step=iteration)
+                else:
+                    logger.add_image_mask_to_sequence(SegmentationVisualizationCallback.test_sequence_name,
+                                                    names[i], img, mask_dict)
 
+    @staticmethod
+    def visualize_with_plotly(image: np.ndarray, pred_mask: torch.Tensor, target_mask: torch.Tensor, classes):
+        """
 
-# class MlflowCallback(PhaseCallback):
-#     """
-#     A callback that logs metrics to MLFlow.
-#     """
-#
-#     def __init__(self, phase: Phase, freq: int,
-#                  client: MLRun,
-#                  params: Mapping = None
-#                  ):
-#         """
-#         param phase: phase to log metrics for
-#         param freq: frequency of logging
-#         param client: MLFlow client
-#         """
-#
-#         if phase == Phase.TRAIN_EPOCH_END:
-#             self.prefix = 'train_'
-#         elif phase == Phase.VALIDATION_EPOCH_END:
-#             self.prefix = 'val_'
-#         else:
-#             raise NotImplementedError('Unrecognized Phase')
-#
-#         super(MlflowCallback, self).__init__(phase)
-#         self.freq = freq
-#         self.client = client
-#
-#         if params:
-#             self.client.log_params(params)
-#
-#     def __call__(self, context: PhaseContext):
-#         """
-#         Logs metrics to MLFlow.
-#             param context: context of the current phase
-#         """
-#         if context.epoch % self.freq == 0:
-#             self.client.log_metrics({self.prefix + k: v for k, v in context.metrics_dict.items()})
+        :param image: numpy image
+        :param pred_mask: (C, H, W) tensor of classes in one hot encoding
+        :param target_mask: (H, W) tensor of classes
+        :param classes:
+        :return:
+        """
+        n_plots = image.shape[0] + 2
+        rows, cols = n_plots // 2 + 1, 2
+        fig = make_subplots(rows=rows, cols=cols)
+        pred_mask = torch.tensor(pred_mask.copy())
+        target_mask = torch.tensor(target_mask.copy())
+
+        for i in range(image.shape[0]):
+            row = i // rows + 1
+            col = i % cols + 1
+            trace = go.Heatmap(z=image[i], showlegend=False, colorscale='viridis', showscale=False)
+            fig.add_trace(trace, row=row, col=col)
+            
+        fig.add_trace(go.Heatmap(z=pred_mask.argmax(dim=0).numpy(), showlegend=False, showscale=False))
+        fig.add_trace(go.Heatmap(z=target_mask.numpy(), showlegend=False, showscale=False))
+        
+        return fig
 
 
 class MetricsLogCallback(PhaseCallback):
