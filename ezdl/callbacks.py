@@ -32,8 +32,9 @@ def callback_factory(name, params, **kwargs):
         params['phase'] = Phase.VALIDATION_BATCH_END \
             if params['phase'] == 'validation' \
             else Phase.TEST_BATCH_END
+        if params['phase'] == Phase.TEST_BATCH_END:
+            params['batch_idxs'] = range(len(loader)-1) 
         return SegmentationVisualizationCallback(logger=seg_trainer.sg_logger,
-                                                 batch_idxs=[0, len(loader) - 1],
                                                  last_img_idx_in_batch=4,
                                                  num_classes=dataset.trainset.CLASS_LABELS,
                                                  undo_preprocessing=dataset.undo_preprocess,
@@ -151,8 +152,8 @@ class SegmentationVisualization:
         :param image_scale:             scale factor for output image
         """
         image_tensor = image_tensor.detach()
-        if not use_plotly:
-            image_np = image_np.cpu().numpy()
+        if use_plotly:
+            image_np = image_tensor.cpu().numpy()
         else:
             image_np = undo_preprocessing_func(image_tensor).type(dtype=torch.uint8).cpu()
 
@@ -192,19 +193,33 @@ class SegmentationVisualization:
         :return:
         """
         n_plots = image.shape[0] + 2
-        rows, cols = n_plots // 2 + 1, 2
-        fig = make_subplots(rows=rows, cols=cols)
+        cols = min(n_plots, 4)
+        rows = int(np.ceil(n_plots / cols))
+        fig = make_subplots(rows=rows, cols=cols, shared_xaxes=True, shared_yaxes=True)
         pred_mask = torch.tensor(pred_mask.copy())
         target_mask = torch.tensor(target_mask.copy())
 
         for i in range(image.shape[0]):
-            row = i // rows + 1
+            row = i // cols + 1
             col = i % cols + 1
-            trace = go.Heatmap(z=image[i], showlegend=False, colorscale='viridis', showscale=False)
+            trace = go.Heatmap(z=image[i], showlegend=False, colorscale='viridis', showscale=False, name=f"channel_{i}")
             fig.add_trace(trace, row=row, col=col)
             
-        fig.add_trace(go.Heatmap(z=pred_mask.argmax(dim=0).numpy(), showlegend=False, showscale=False))
-        fig.add_trace(go.Heatmap(z=target_mask.numpy(), showlegend=False, showscale=False))
+        
+        fig.add_trace(go.Heatmap(z=pred_mask.argmax(dim=0).numpy(), showlegend=False, showscale=False, name="preds", zmin=0, zmax=len(classes) - 1),
+                      row=(n_plots - 2) // cols + 1, col=(n_plots - 2) % cols + 1)
+        fig.add_trace(go.Heatmap(z=target_mask.numpy(), showlegend=False, showscale=False, name="gt", zmin=0, zmax=len(classes) - 1),
+                      row=(n_plots - 1) // cols + 1, col=(n_plots - 1) % cols + 1)
+        
+        min_size = 192
+        width = target_mask.shape[1]
+        height = target_mask.shape[0]
+        if width < min_size:
+            ratio = width / height
+            width = min_size
+            height = min_size // ratio
+
+        fig.update_layout(width=width*cols, height=height*rows, margin=dict(t=100, b=100, l=50, r=50))
         
         return fig
 

@@ -245,9 +245,9 @@ class ClearMLLogger(BaseSGLogger):
     def add_image_mask_sequence(self, name):
         pass
 
-    def add_plotly_figure(self, tag, figure, iteration=None):
+    def add_plotly_figure(self, tag, figure, global_step=None):
         self.run.get_logger().report_plotly(
-            title=tag, series=tag, iteration=iteration, figure=figure
+            title=tag, series=tag, iteration=global_step, figure=figure
         )
 
     @property
