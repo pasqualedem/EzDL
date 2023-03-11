@@ -54,7 +54,7 @@ class SegmentationVisualizationCallback(PhaseCallback):
     """
 
     def __init__(self, logger, phase: Phase, freq: int, num_classes, batch_idxs=None, last_img_idx_in_batch: int = None,
-                 undo_preprocessing=None):
+                 undo_preprocessing=None, use_plotly=False):
         super(SegmentationVisualizationCallback, self).__init__(phase)
         if batch_idxs is None:
             batch_idxs = [0]
@@ -63,6 +63,7 @@ class SegmentationVisualizationCallback(PhaseCallback):
         self.batch_idxs = batch_idxs
         self.last_img_idx_in_batch = last_img_idx_in_batch
         self.undo_preprocesing = undo_preprocessing
+        self.use_plotly = use_plotly
         self.prefix = 'train' if phase == Phase.TRAIN_EPOCH_END else 'val' \
             if phase == Phase.VALIDATION_BATCH_END else 'test'
         if phase == Phase.TEST_BATCH_END:
@@ -86,8 +87,9 @@ class SegmentationVisualizationCallback(PhaseCallback):
                                                       undo_preprocessing_func=self.undo_preprocesing,
                                                       prefix=self.prefix,
                                                       names=context.input_name,
-                                                      iteration=context.epoch)
-            if self.prefix == 'test' and context.batch_idx == self.batch_idxs[-1]:
+                                                      iteration=context.epoch,
+                                                      use_plotly=self.use_plotly)
+            if self.prefix == 'test' and context.batch_idx == self.batch_idxs[-1] and not self.use_plotly:
                 context.sg_logger.add_image_mask_sequence(f'{self.prefix}_seg')
 
 
@@ -148,7 +150,11 @@ class SegmentationVisualization:
         :param undo_preprocessing_func: a function to convert preprocessed images tensor into a batch of cv2-like images
         :param image_scale:             scale factor for output image
         """
-        image_np = undo_preprocessing_func(image_tensor.detach()).type(dtype=torch.uint8).cpu()
+        image_tensor = image_tensor.detach()
+        if not use_plotly:
+            image_np = image_np.cpu().numpy()
+        else:
+            image_np = undo_preprocessing_func(image_tensor).type(dtype=torch.uint8).cpu()
 
         if names is None:
             names = ['_'.join([prefix, 'seg', str(batch_name), str(i)]) if prefix == 'val' else \
