@@ -89,6 +89,29 @@ def metrics_factory(metrics_params: Mapping) -> dict:
                   ]
                   )
 
+def MaskedMetricFactory(name, parent):
+    def __init__(self, *args, **kwargs):
+        parent.__init__(self, **kwargs)
+
+    def update(self, preds, target, padding):
+        for i in range(preds.shape[0]):
+            w_slice = slice(0, preds.shape[2] - padding[i][1])
+            h_slice = slice(0, preds.shape[3] - padding[i][0])
+            pred = preds[i, :, w_slice, h_slice]
+            targ = target[i, w_slice, h_slice]
+            parent.update(self, pred.unsqueeze(0), targ.unsqueeze(0))
+        
+    metric = type(name, (parent,), {"update": update, "__init__": __init__})
+    return metric
+
+
+masked_metrics = {
+    "mf1": MaskedMetricFactory("MF1Score", F1Score),
+    "mprecision": MaskedMetricFactory("MPrecision", Precision),
+    "mrecall": MaskedMetricFactory("MRecall", Recall),
+    "mjaccard": MaskedMetricFactory("MJaccardIndex", JaccardIndex),
+    "mconf_mat": MaskedMetricFactory("MConfMat", WrapCF),
+}
 
 METRICS = {
     'jaccard': JaccardIndex,
@@ -97,5 +120,6 @@ METRICS = {
     'f1': F1Score,
     'precision': Precision,
     'recall': Recall,
-    'conf_mat': WrapCF
+    'conf_mat': WrapCF,
+    **masked_metrics
 }

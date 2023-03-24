@@ -1859,14 +1859,6 @@ class EzTrainer:
             logger.info('ROC curve computed.')
         return metrics
 
-    def _add_metrics_update_callback(self, phase: Phase):
-        """
-        Adds MetricsUpdateCallback to be fired at phase
-
-        :param phase: Phase for the metrics callback to be fired at
-        """
-        self.phase_callbacks.append(MetricsUpdateCallback(phase))
-
     def _initialize_sg_logger_objects(self, logger_run=None, additional_configs_to_log: Dict = None):
         if not self.train_initialized:
             self.train_initialized = True

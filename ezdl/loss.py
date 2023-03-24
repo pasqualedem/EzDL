@@ -201,7 +201,7 @@ class AuxiliaryLoss(ComposedLoss):
         task_loss = self.task_loss_fn(out, target)
         if isinstance(task_loss, tuple):  # SOME LOSS FUNCTIONS RETURNS LOSS AND LOG_ITEMS
             task_loss = task_loss[0]
-        aux_loss = self.aux_loss_fn(aux, target)
+        aux_loss = self.aux_loss_fn(aux['aux'], target)
         loss = task_loss * (1 - self.aux_loss_coeff) + aux_loss * self.aux_loss_coeff
 
         return loss, torch.cat((loss.unsqueeze(0), task_loss.unsqueeze(0), aux_loss.unsqueeze(0))).detach()

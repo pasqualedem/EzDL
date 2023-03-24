@@ -33,7 +33,7 @@ def callback_factory(name, params, **kwargs):
             if params['phase'] == 'validation' \
             else Phase.TEST_BATCH_END
         if params['phase'] == Phase.TEST_BATCH_END:
-            params['batch_idxs'] = range(len(loader)-1) 
+            params['batch_idxs'] = range(len(loader)) 
         return SegmentationVisualizationCallback(logger=seg_trainer.sg_logger,
                                                  last_img_idx_in_batch=4,
                                                  num_classes=dataset.trainset.CLASS_LABELS,
