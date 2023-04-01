@@ -1,5 +1,6 @@
 from ezdl.models.kd.feature import FDOutput
 from ezdl.utils.utilities import substitute_values, instantiate_class
+from einops import rearrange
 
 from torch.nn import CrossEntropyLoss, Module, MSELoss
 import torch.nn.functional as F
@@ -53,6 +54,104 @@ class FocalLoss(Module):
         return self.reduction(focal_loss)
 
 
+# based on:
+# https://github.com/kevinzakka/pytorch-goodies/blob/master/losses.py
+class DiceLoss(nn.Module):
+    r"""Criterion that computes Sørensen-Dice Coefficient loss.
+
+    According to [1], we compute the Sørensen-Dice Coefficient as follows:
+
+    .. math::
+
+        \text{Dice}(x, class) = \frac{2 |X| \cap |Y|}{|X| + |Y|}
+
+    where:
+       - :math:`X` expects to be the scores of each class.
+       - :math:`Y` expects to be the one-hot tensor with the class labels.
+
+    the loss, is finally computed as:
+
+    .. math::
+
+        \text{loss}(x, class) = 1 - \text{Dice}(x, class)
+
+    [1] https://en.wikipedia.org/wiki/S%C3%B8rensen%E2%80%93Dice_coefficient
+
+    Shape:
+        - Input: :math:`(N, C, H, W)` where C = number of classes.
+        - Target: :math:`(N, H, W)` where each value is
+          :math:`0 ≤ targets[i] ≤ C−1`.
+
+    Examples:
+        >>> N = 5  # num_classes
+        >>> loss = tgm.losses.DiceLoss()
+        >>> input = torch.randn(1, N, 3, 5, requires_grad=True)
+        >>> target = torch.empty(1, 3, 5, dtype=torch.long).random_(N)
+        >>> output = loss(input, target)
+        >>> output.backward()
+    """
+
+    def __init__(self, weight = None, reduction: str = 'mean', average: str = 'micro') -> None:
+        super(DiceLoss, self).__init__()
+        self.weight = None
+        self.average = average
+        if weight:
+            self.weight = torch.tensor(weight)
+            if self.average == 'micro':
+                raise ValueError("Weighted Dice Loss is only supported for macro average")
+        self.reduction = get_reduction(reduction)
+        self.eps: float = 1e-6
+
+    def forward(
+            self,
+            input: torch.Tensor,
+            target: torch.Tensor) -> torch.Tensor:
+        if not torch.is_tensor(input):
+            raise TypeError("Input type is not a torch.Tensor. Got {}"
+                            .format(type(input)))
+        if not len(input.shape) == 4:
+            raise ValueError("Invalid input shape, we expect BxNxHxW. Got: {}"
+                             .format(input.shape))
+        if not input.shape[-2:] == target.shape[-2:]:
+            raise ValueError("input and target shapes must be the same. Got: {}"
+                             .format(input.shape, input.shape))
+        if not input.device == target.device:
+            raise ValueError(
+                "input and target must be in the same device. Got: {}" .format(
+                    input.device, target.device))
+        # compute softmax over the classes axis
+        input_soft = F.softmax(input, dim=1)
+
+        # create the labels one hot tensor
+        target_one_hot = F.one_hot(target, num_classes=input.shape[1]).permute(0, 3, 2, 1)
+
+        if self.average == 'macro':
+            return self._macro_forward(input_soft, target_one_hot)
+        # compute the actual dice score
+        dice_score = self._calc_dice(input_soft, target_one_hot)
+        return self.reduction(1. - dice_score)
+
+    def _calc_dice(self, input, target):
+        dims = (1, 2, 3)
+
+        intersection = torch.sum(input * target, dims)
+        cardinality = torch.sum(input + target, dims)
+        dice_score = (2. * intersection + self.eps) / (cardinality + self.eps)
+        return dice_score
+    
+    def _macro_forward(self, input, target):
+        flat_input = rearrange(input, 'b (c bin) h w -> (b c) bin h w', bin=1)
+        flat_target = rearrange(target, 'b (c bin) h w -> (b c) bin h w', bin=1)
+
+        dice = 1. - self._calc_dice(flat_input, flat_target) # (B X C)
+        dice = rearrange(dice, '(b c) -> b c', c=input.shape[1])
+        if self.weight is not None:
+            dice = dice * self.weight.to(input.device)
+        dice = dice.mean(dim=1)
+        return self.reduction(dice)
+
+
+
 class VisklDivLoss(nn.KLDivLoss):
     """ KL divergence wrapper for Computer Vision tasks."""
     def __init__(self, reduction: str = 'mean', **kwargs):
@@ -102,7 +201,7 @@ class AuxiliaryLoss(ComposedLoss):
         task_loss = self.task_loss_fn(out, target)
         if isinstance(task_loss, tuple):  # SOME LOSS FUNCTIONS RETURNS LOSS AND LOG_ITEMS
             task_loss = task_loss[0]
-        aux_loss = self.aux_loss_fn(aux, target)
+        aux_loss = self.aux_loss_fn(aux['aux'], target)
         loss = task_loss * (1 - self.aux_loss_coeff) + aux_loss * self.aux_loss_coeff
 
         return loss, torch.cat((loss.unsqueeze(0), task_loss.unsqueeze(0), aux_loss.unsqueeze(0))).detach()
@@ -245,6 +344,7 @@ class VariationalInformationLogitsLoss(KDFeatureLogitsLoss):
 
 LOSSES = {
     'cross_entropy': CELoss,
+    'dice': DiceLoss,
     'focal': FocalLoss,
     'variational_information_loss': VariationalInformationLoss,
     'mean_variational_information_loss': VariationalInformationLossMean,

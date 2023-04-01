@@ -203,7 +203,7 @@ class PairRandomRotation(torch.nn.Module):
         super().__init__()
         # _log_api_usage_once(self)
 
-        if isinstance(self.degree, Iterable):
+        if isinstance(degree, Iterable):
             self.degree = degree
         else:
             self.degree = [-degree, degree]
@@ -225,7 +225,7 @@ class PairRandomRotation(torch.nn.Module):
             value = torch.FloatTensor(1).uniform_(*self.degree)
             self.image_rotation[pid] = value
 
-        return F.rotate(img, value, self.interpolation)
+        return F.rotate(img.unsqueeze(0), value.item(), self.interpolation).squeeze(0)
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(p={self.degree})"

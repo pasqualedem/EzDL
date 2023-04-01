@@ -3,6 +3,7 @@ from typing import Mapping, Dict, Tuple
 
 import pandas as pd
 from super_gradients.common import MultiGPUMode
+from torch.cuda.amp import autocast
 
 from piptools.scripts.sync import _get_installed_distributions
 
@@ -13,17 +14,48 @@ from super_gradients.training import StrictLoad, Trainer
 from super_gradients.training.params import TrainingParams
 from super_gradients.training.utils.callbacks import Phase, PhaseContext, CallbackHandler
 from super_gradients.training import utils as core_utils
+from super_gradients.training.utils import sg_trainer_utils
 from super_gradients.common.environment.device_utils import device_config
 from super_gradients.training import models
 from super_gradients.training.utils.distributed_training_utils import setup_device
+from super_gradients.common.abstractions.abstract_logger import get_logger
+from super_gradients.common.data_types.enum import MultiGPUMode, StrictLoad, EvaluationType
+from super_gradients.common.environment.device_utils import device_config
+from super_gradients.common.sg_loggers import SG_LOGGERS
+from super_gradients.common.sg_loggers.abstract_sg_logger import AbstractSGLogger
+from super_gradients.common.sg_loggers.base_sg_logger import BaseSGLogger
+from super_gradients.training import utils as core_utils, models
+from super_gradients.training.metrics.metric_utils import (
+    get_metrics_results_tuple,
+    get_logging_values,
+    get_train_loop_description_dict,
+)
+from super_gradients.training.params import TrainingParams
+from super_gradients.training.utils import sg_trainer_utils
+from super_gradients.training.utils.callbacks import (
+    CallbackHandler,
+    Phase,
+    PhaseContext,
+)
+from super_gradients.training.utils.checkpoint_utils import (
+    load_checkpoint_to_model,
+)
+from super_gradients.training.utils.distributed_training_utils import (
+    reduce_results_tuple_for_ddp,
+    setup_device,
+    get_gpu_mem_utilization,
+    get_device_ids,
+)
+
 
 import torch
 from super_gradients.training.utils.checkpoint_utils import load_checkpoint_to_model
+from torchmetrics import MetricCollection
 from tqdm import tqdm
 from pprint import pformat
 
 # from ezdl.callbacks import SegmentationVisualizationCallback
-from ezdl.models import MODELS as MODELS_DICT
+from ezdl.models import MODELS as MODELS_DICT, WrappedModel
 from ezdl.callbacks import AuxMetricsUpdateCallback, callback_factory
 from ezdl.utils.utilities import get_module_class_from_path, instantiate_class
 from ezdl.logger.basesg_logger import BaseSGLogger as BaseLogger
@@ -148,6 +180,100 @@ class SegmentationTrainer(Trainer):
             self.valid_loader._iterator._shutdown_workers()
         self._restore_best_params()
 
+    def _train_epoch(self, epoch: int, silent_mode: bool = False) -> tuple:
+        """
+        train_epoch - A single epoch training procedure
+            :param optimizer:   The optimizer for the network
+            :param epoch:       The current epoch
+            :param silent_mode: No verbosity
+        """
+        # SET THE MODEL IN training STATE
+        self.net.train()
+        # THE DISABLE FLAG CONTROLS WHETHER THE PROGRESS BAR IS SILENT OR PRINTS THE LOGS
+        progress_bar_train_loader = tqdm(self.train_loader, bar_format="{l_bar}{bar:10}{r_bar}", dynamic_ncols=True, disable=silent_mode)
+        progress_bar_train_loader.set_description(f"Train epoch {epoch}")
+
+        # RESET/INIT THE METRIC LOGGERS
+        self._reset_metrics()
+
+        self.train_metrics.to(device_config.device)
+        loss_avg_meter = core_utils.utils.AverageMeter()
+
+        context = PhaseContext(
+            epoch=epoch,
+            optimizer=self.optimizer,
+            metrics_compute_fn=self.train_metrics,
+            loss_avg_meter=loss_avg_meter,
+            criterion=self.criterion,
+            device=device_config.device,
+            lr_warmup_epochs=self.training_params.lr_warmup_epochs,
+            sg_logger=self.sg_logger,
+            train_loader=self.train_loader,
+            context_methods=self._get_context_methods(Phase.TRAIN_BATCH_END),
+            ddp_silent_mode=self.ddp_silent_mode,
+        )
+
+        for batch_idx, batch_items in enumerate(progress_bar_train_loader):
+            batch_items = core_utils.tensor_container_to_device(batch_items, device_config.device, non_blocking=True)
+            inputs, targets, additional_batch_items = sg_trainer_utils.unpack_batch_items(batch_items)
+
+            if self.pre_prediction_callback is not None:
+                inputs, targets = self.pre_prediction_callback(inputs, targets, batch_idx)
+
+            context.update_context(batch_idx=batch_idx, inputs=inputs, target=targets, **additional_batch_items)
+            self.phase_callback_handler.on_train_batch_start(context)
+
+            # AUTOCAST IS ENABLED ONLY IF self.training_params.mixed_precision - IF enabled=False AUTOCAST HAS NO EFFECT
+            with autocast(enabled=self.training_params.mixed_precision):
+                # FORWARD PASS TO GET NETWORK'S PREDICTIONS
+                outputs = self._forward_step(inputs, targets, additional_batch_items)
+
+                # COMPUTE THE LOSS FOR BACK PROP + EXTRA METRICS COMPUTED DURING THE LOSS FORWARD PASS
+                loss, loss_log_items = self._get_losses(outputs, targets)
+
+            context.update_context(preds=outputs, loss_log_items=loss_log_items)
+            self.phase_callback_handler.on_train_batch_loss_end(context)
+
+            # LOG LR THAT WILL BE USED IN CURRENT EPOCH AND AFTER FIRST WARMUP/LR_SCHEDULER UPDATE BEFORE WEIGHT UPDATE
+            if not self.ddp_silent_mode and batch_idx == 0:
+                self._write_lrs(epoch)
+
+            self._backward_step(loss, epoch, batch_idx, context)
+
+            # COMPUTE THE RUNNING USER METRICS AND LOSS RUNNING ITEMS. RESULT TUPLE IS THEIR CONCATENATION.
+            logging_values = loss_avg_meter.average + get_metrics_results_tuple(self.train_metrics)
+            gpu_memory_utilization = get_gpu_mem_utilization() / 1e9 if torch.cuda.is_available() else 0
+
+            # RENDER METRICS PROGRESS
+            pbar_message_dict = get_train_loop_description_dict(
+                logging_values, self.train_metrics, self.loss_logging_items_names, gpu_mem=gpu_memory_utilization
+            )
+
+            progress_bar_train_loader.set_postfix(**pbar_message_dict)
+            self.phase_callback_handler.on_train_batch_end(context)
+
+            # TODO: ITERATE BY MAX ITERS
+            # FOR INFINITE SAMPLERS WE MUST BREAK WHEN REACHING LEN ITERATIONS.
+            if (self._infinite_train_loader and batch_idx == len(self.train_loader) - 1) or (
+                self.max_train_batches is not None and self.max_train_batches - 1 <= batch_idx
+            ):
+                break
+
+        self.train_monitored_values = sg_trainer_utils.update_monitored_values_dict(
+            monitored_values_dict=self.train_monitored_values, new_values_dict=pbar_message_dict
+        )
+
+        return logging_values
+    
+    def _forward_step(self, inputs, targets, additional_batch_items):
+        if core_utils.get_param(self.training_params, "pass_targets_to_net", False):
+            if core_utils.get_param(self.training_params, "pass_additional_batch_items_to_net", False):
+                return self.net(inputs, targets, additional_batch_items)
+            return self.net(inputs, targets)
+        if core_utils.get_param(self.training_params, "pass_additional_batch_items_to_net", False):
+            return self.net(inputs, additional_batch_items)
+        return self.net(inputs)
+    
     def _get_losses(self, outputs: torch.Tensor, targets: torch.Tensor) -> Tuple[torch.Tensor, tuple]:
         # GET THE OUTPUT OF THE LOSS FUNCTION
         if self.validation and core_utils.get_param(self.training_params, "inform_loss_in_validaiton", False):
@@ -182,6 +308,120 @@ class SegmentationTrainer(Trainer):
         res = super()._validate_epoch(epoch, silent_mode)
         self.validation = False
         return res
+    
+    def evaluate(
+        self,
+        data_loader: torch.utils.data.DataLoader,
+        metrics: MetricCollection,
+        evaluation_type: EvaluationType,
+        epoch: int = None,
+        silent_mode: bool = False,
+        metrics_progress_verbose: bool = False,
+    ):
+        """
+        Evaluates the model on given dataloader and metrics.
+
+        :param data_loader: dataloader to perform evaluataion on
+        :param metrics: (MetricCollection) metrics for evaluation
+        :param evaluation_type: (EvaluationType) controls which phase callbacks will be used (for example, on batch end,
+            when evaluation_type=EvaluationType.VALIDATION the Phase.VALIDATION_BATCH_END callbacks will be triggered)
+        :param epoch: (int) epoch idx
+        :param silent_mode: (bool) controls verbosity
+        :param metrics_progress_verbose: (bool) controls the verbosity of metrics progress (default=False).
+            Slows down the program significantly.
+
+        :return: results tuple (tuple) containing the loss items and metric values.
+        """
+
+        # THE DISABLE FLAG CONTROLS WHETHER THE PROGRESS BAR IS SILENT OR PRINTS THE LOGS
+        progress_bar_data_loader = tqdm(data_loader, bar_format="{l_bar}{bar:10}{r_bar}", dynamic_ncols=True, disable=silent_mode)
+        loss_avg_meter = core_utils.utils.AverageMeter()
+        logging_values = None
+        loss_tuple = None
+        lr_warmup_epochs = self.training_params.lr_warmup_epochs if self.training_params else None
+        context = PhaseContext(
+            epoch=epoch,
+            metrics_compute_fn=metrics,
+            loss_avg_meter=loss_avg_meter,
+            criterion=self.criterion,
+            device=device_config.device,
+            lr_warmup_epochs=lr_warmup_epochs,
+            sg_logger=self.sg_logger,
+            context_methods=self._get_context_methods(Phase.VALIDATION_BATCH_END),
+        )
+
+        if not silent_mode:
+            # PRINT TITLES
+            pbar_start_msg = f"Validation epoch {epoch}" if evaluation_type == EvaluationType.VALIDATION else "Test"
+            progress_bar_data_loader.set_description(pbar_start_msg)
+
+        with torch.no_grad():
+            for batch_idx, batch_items in enumerate(progress_bar_data_loader):
+                batch_items = core_utils.tensor_container_to_device(batch_items, device_config.device, non_blocking=True)
+                inputs, targets, additional_batch_items = sg_trainer_utils.unpack_batch_items(batch_items)
+
+                # TRIGGER PHASE CALLBACKS CORRESPONDING TO THE EVALUATION TYPE
+                context.update_context(batch_idx=batch_idx, inputs=inputs, target=targets, **additional_batch_items)
+                if evaluation_type == EvaluationType.VALIDATION:
+                    self.phase_callback_handler.on_validation_batch_start(context)
+                else:
+                    self.phase_callback_handler.on_test_batch_start(context)
+
+                output = self._forward_step(inputs, targets, batch_items)
+                context.update_context(preds=output)
+
+                if self.criterion is not None:
+                    # STORE THE loss_items ONLY, THE 1ST RETURNED VALUE IS THE loss FOR BACKPROP DURING TRAINING
+                    loss_tuple = self._get_losses(output, targets)[1].cpu()
+                    context.update_context(loss_log_items=loss_tuple)
+
+                # TRIGGER PHASE CALLBACKS CORRESPONDING TO THE EVALUATION TYPE
+                if evaluation_type == EvaluationType.VALIDATION:
+                    self.phase_callback_handler.on_validation_batch_end(context)
+                else:
+                    self.phase_callback_handler.on_test_batch_end(context)
+
+                # COMPUTE METRICS IF PROGRESS VERBOSITY IS SET
+                if metrics_progress_verbose and not silent_mode:
+                    # COMPUTE THE RUNNING USER METRICS AND LOSS RUNNING ITEMS. RESULT TUPLE IS THEIR CONCATENATION.
+                    logging_values = get_logging_values(loss_avg_meter, metrics, self.criterion)
+                    pbar_message_dict = get_train_loop_description_dict(logging_values, metrics, self.loss_logging_items_names)
+
+                    progress_bar_data_loader.set_postfix(**pbar_message_dict)
+
+                if evaluation_type == EvaluationType.VALIDATION and self.max_valid_batches is not None and self.max_valid_batches - 1 <= batch_idx:
+                    break
+
+        # NEED TO COMPUTE METRICS FOR THE FIRST TIME IF PROGRESS VERBOSITY IS NOT SET
+        if not metrics_progress_verbose:
+            # COMPUTE THE RUNNING USER METRICS AND LOSS RUNNING ITEMS. RESULT TUPLE IS THEIR CONCATENATION.
+            logging_values = get_logging_values(loss_avg_meter, metrics, self.criterion)
+            pbar_message_dict = get_train_loop_description_dict(logging_values, metrics, self.loss_logging_items_names)
+
+            progress_bar_data_loader.set_postfix(**pbar_message_dict)
+
+        # TODO: SUPPORT PRINTING AP PER CLASS- SINCE THE METRICS ARE NOT HARD CODED ANYMORE (as done in
+        #  calc_batch_prediction_accuracy_per_class in metric_utils.py), THIS IS ONLY RELEVANT WHEN CHOOSING
+        #  DETECTIONMETRICS, WHICH ALREADY RETURN THE METRICS VALUEST HEMSELVES AND NOT THE ITEMS REQUIRED FOR SUCH
+        #  COMPUTATION. ALSO REMOVE THE BELOW LINES BY IMPLEMENTING CRITERION AS A TORCHMETRIC.
+
+        if device_config.multi_gpu == MultiGPUMode.DISTRIBUTED_DATA_PARALLEL:
+            logging_values = reduce_results_tuple_for_ddp(logging_values, next(self.net.parameters()).device)
+
+        pbar_message_dict = get_train_loop_description_dict(logging_values, metrics, self.loss_logging_items_names)
+
+        self.valid_monitored_values = sg_trainer_utils.update_monitored_values_dict(
+            monitored_values_dict=self.valid_monitored_values, new_values_dict=pbar_message_dict
+        )
+
+        if not silent_mode and evaluation_type == EvaluationType.VALIDATION:
+            progress_bar_data_loader.write("===========================================================")
+            sg_trainer_utils.display_epoch_summary(
+                epoch=context.epoch, n_digits=4, train_monitored_values=self.train_monitored_values, valid_monitored_values=self.valid_monitored_values
+            )
+            progress_bar_data_loader.write("===========================================================")
+
+        return logging_values
 
     def _net_to_device(self):
         """
@@ -202,8 +442,8 @@ class SegmentationTrainer(Trainer):
             local_rank = int(device_config.device.split(":")[1])
             self.net = torch.nn.parallel.DistributedDataParallel(self.net, device_ids=[local_rank], output_device=local_rank, find_unused_parameters=True)
 
-        elif not isinstance(self.net, core_utils.WrappedModel):
-            self.net = core_utils.WrappedModel(self.net)
+        elif not isinstance(self.net, WrappedModel):
+            self.net = WrappedModel(self.net)
         else:
             pass
         

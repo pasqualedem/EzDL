@@ -1,10 +1,12 @@
 import numpy as np
 import torchvision.models as models
+import inspect
 import torch
 
 from inspect import signature
 from ptflops import get_model_complexity_info
 from ezdl.models import MODELS
+from ezdl.utils.utilities import load_yaml
 
 
 def seg_model_flops(model, size, verbose=False, per_layer_stats=False):
@@ -68,7 +70,8 @@ def seg_inference_inference_per_second(model, size, batch_size, device, model_ar
     print(f"Time per example {mean_syn / batch_size} ms")
 
 
-def complexity():
+def complexity(file):
+    params = load_yaml(file)
     models = [
         # ('lawin', 1, {'backbone_pretrained': True}),
         # ('lawin', 2, {'backbone_pretrained': True}),
@@ -111,14 +114,14 @@ def complexity():
         # ('segnet', 3, {}),
         # ('segnet', 4, {}),
         # ('resnet', 3, {"model_name": "50"}),
-        # ('deeplabv3_resnet50', 3, {}),
+        # ('deeplabv3_resnet50', 3, {}, 6),
         # ('splitlawin', 5, {'main_channels': 3, 'backbone': 'MiT-B0'}),
         # ('splitlawin', 5, {'main_channels': 3, 'backbone': 'MiT-B1'}),
         # ('lawin', 5, {'backbone': 'MiT-B0'}, 16),
         # ('lawin', 5, {'backbone': 'MiT-B1'}, 8),
-        ('lawin', 5, {'backbone': 'MiT-LD'}, 32),
-        ('lawin', 5, {'backbone': 'MiT-L0'}, 48),
-        ('lawin', 5, {'backbone': 'MiT-L1'}, 64),
+        # ('lawin', 5, {'backbone': 'MiT-LD'}, 32),
+        # ('lawin', 5, {'backbone': 'MiT-L0'}, 48),
+        # ('lawin', 5, {'backbone': 'MiT-L1'}, 64),
         # ('mit', 5, {'model_name': 'B0'}),
         # ('mit', 5, {'model_name': 'B1'}),
         # ('mit', 5, {'model_name': 'LD'}),
@@ -126,18 +129,27 @@ def complexity():
         # ('mit', 5, {'model_name': 'L0'}),
         # ('mit', 5, {'model_name': 'L1'}),
     ]
-    per_layer_stats = False
-    verbose = False
-    wh = (256, 256)
-    for compl_tuple in models:
-        if len(compl_tuple) == 4:
-            model, channels, args, batch_size = compl_tuple
-        else:
-            model, channels, args = compl_tuple
-            batch_size = 8
+    per_layer_stats = params.get('per_layer_stats', False)
+    verbose = params.get('verbose', False)
+    models = params['models']
+    wh = params.get("size") or [256, 256]
+    default_batch_size = params.get('batch_size', 1)
+    defualt_channels = params.get('in_channels', 3)
+    default_num_classes = params.get('num_classes', 3)
+
+    for params in models:
+        model = params['name']
+        batch_size = params.get('batch_size', default_batch_size)
+        in_channels = params.get('in_channels', defualt_channels)
+        num_classes = params.get('num_classes', default_num_classes)
+        params = params.get('params') or {}
+
         with torch.cuda.device(0):
-            model_signature = signature(MODELS[model].__init__).parameters.keys()
-            in_params = {'input_channels': channels, 'num_classes': 3, "output_channels": 3, **args}
+            if inspect.isclass(MODELS[model]):
+                model_signature = signature(MODELS[model].__init__).parameters.keys()
+            else:
+                model_signature = signature(MODELS[model]).parameters.keys()
+            in_params = {'input_channels': in_channels, 'num_classes': num_classes, "output_channels": num_classes, **params}
             if 'arch_params' in model_signature:
                 net = MODELS[model](in_params).to('cuda')
             else:
@@ -145,9 +157,9 @@ def complexity():
                 discard_args = {k: v for k, v in in_params.items() if k not in model_signature}
                 print(f"Discarded args: {discard_args}")
                 net = MODELS[model](**actual_args).to('cuda')
-            size = (channels, ) + wh
+            size = [in_channels] + wh
             print(f"Model: {model}")
-            print(f"args: {args}")
+            print(f"args: {params}")
             print(f"Batches: {batch_size}")
             print(f"Size: {size}")
             seg_model_flops(net, size, verbose, per_layer_stats)
@@ -160,4 +172,5 @@ def complexity():
 
 
 if __name__ == '__main__':
-    complexity()
+    file = "complexity.yaml"
+    complexity(file)

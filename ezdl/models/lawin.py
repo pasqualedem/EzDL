@@ -3,12 +3,16 @@ from super_gradients.training.utils import get_param, HpmStruct
 from super_gradients.training import utils as sg_utils
 from torch import Tensor
 from torch.nn import functional as F
+from ezdl.logger.text_logger import get_logger
 
-from ezdl.utils.utilities import filter_none
+from ezdl.utils.utilities import filter_none, load_checkpoint_module_fix
 from ezdl.models.backbones.mit import MiTFusion, mit_settings
 from ezdl.models.base import BaseModel
 from ezdl.models.heads.lawin import LawinHead
 from ezdl.models.heads.laweed import LaweedHead
+
+
+logger = get_logger(__name__)
 
 
 class BaseLawin(BaseModel):
@@ -32,6 +36,21 @@ class BaseLawin(BaseModel):
             else:
                 self.main_pretrained = pretrained_channels
             self.backbone.init_pretrained_weights(self.main_pretrained)
+        if arch_params.get('pretrained'):
+            self.init_pretrained_weights(arch_params['pretrained'])
+
+    def init_pretrained_weights(self, pretrained):
+        pretrained_mode = get_param(pretrained, "source", "clearml")
+        if pretrained_mode == "clearml":
+            from ezdl.logger.clearml_logger import load_weight_from_clearml
+            pretrained_run = pretrained['run']
+            weights = load_weight_from_clearml(pretrained_run)
+        else:
+            raise NotImplementedError("Only clearml mode is supported for pretrained weights")
+        weights = load_checkpoint_module_fix(weights)
+        self.load_state_dict(weights)
+        logger.info(f"Loaded pretrained weights from {pretrained}")
+
 
     def forward(self, x: Tensor, return_encoding=False) -> Tensor:
         feat = self.backbone(x)

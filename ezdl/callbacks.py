@@ -1,7 +1,9 @@
+from collections import defaultdict
 import os
 import torch
 
 import numpy as np
+import pandas as pd
 
 from typing import Union, Callable, Mapping, Any, List
 
@@ -9,7 +11,10 @@ from super_gradients.training.utils.callbacks import *
 from super_gradients.training.utils.early_stopping import EarlyStop
 from super_gradients.training.utils.utils import AverageMeter
 from super_gradients.training.models.kd_modules.kd_module import KDOutput
+from torchmetrics.functional import precision_recall, f1_score
 from PIL import ImageColor, Image
+import plotly.graph_objs as go
+from plotly.subplots import make_subplots
 
 from ezdl.models import ComposedOutput
 
@@ -30,8 +35,9 @@ def callback_factory(name, params, **kwargs):
         params['phase'] = Phase.VALIDATION_BATCH_END \
             if params['phase'] == 'validation' \
             else Phase.TEST_BATCH_END
+        if params['phase'] == Phase.TEST_BATCH_END:
+            params['batch_idxs'] = range(len(loader)) 
         return SegmentationVisualizationCallback(logger=seg_trainer.sg_logger,
-                                                 batch_idxs=[0, len(loader) - 1],
                                                  last_img_idx_in_batch=4,
                                                  num_classes=dataset.trainset.CLASS_LABELS,
                                                  undo_preprocessing=dataset.undo_preprocess,
@@ -52,7 +58,7 @@ class SegmentationVisualizationCallback(PhaseCallback):
     """
 
     def __init__(self, logger, phase: Phase, freq: int, num_classes, batch_idxs=None, last_img_idx_in_batch: int = None,
-                 undo_preprocessing=None):
+                 undo_preprocessing=None, use_plotly=False, metrics=False):
         super(SegmentationVisualizationCallback, self).__init__(phase)
         if batch_idxs is None:
             batch_idxs = [0]
@@ -61,10 +67,15 @@ class SegmentationVisualizationCallback(PhaseCallback):
         self.batch_idxs = batch_idxs
         self.last_img_idx_in_batch = last_img_idx_in_batch
         self.undo_preprocesing = undo_preprocessing
+        self.use_plotly = use_plotly
+        self.metrics = metrics
         self.prefix = 'train' if phase == Phase.TRAIN_EPOCH_END else 'val' \
             if phase == Phase.VALIDATION_BATCH_END else 'test'
         if phase == Phase.TEST_BATCH_END:
             logger.create_image_mask_sequence(f'{self.prefix}_seg')
+            
+    def calculate_metrics(self, preds, target):
+        pass
 
     def __call__(self, context: PhaseContext):
         epoch = context.epoch if context.epoch is not None else 0
@@ -75,6 +86,8 @@ class SegmentationVisualizationCallback(PhaseCallback):
                 preds = context.preds.main.clone()
             else:
                 preds = context.preds.clone()
+            if self.metrics and self.use_plotly:
+                metrics = None
             SegmentationVisualization.visualize_batch(logger=context.sg_logger,
                                                       image_tensor=context.inputs,
                                                       pred_mask=preds,
@@ -84,8 +97,9 @@ class SegmentationVisualizationCallback(PhaseCallback):
                                                       undo_preprocessing_func=self.undo_preprocesing,
                                                       prefix=self.prefix,
                                                       names=context.input_name,
-                                                      iteration=context.epoch)
-            if self.prefix == 'test' and context.batch_idx == self.batch_idxs[-1]:
+                                                      iteration=context.epoch,
+                                                      use_plotly=self.use_plotly)
+            if self.prefix == 'test' and context.batch_idx == self.batch_idxs[-1] and not self.use_plotly:
                 context.sg_logger.add_image_mask_sequence(f'{self.prefix}_seg')
 
 
@@ -129,7 +143,7 @@ class SegmentationVisualization:
                         num_classes,
                         batch_name: Union[int, str],
                         undo_preprocessing_func: Callable[[torch.Tensor], np.ndarray] = lambda x: x,
-                        image_scale: float = 1.,
+                        use_plotly: bool = False,
                         prefix: str = '',
                         names: List[str] = None,
                         iteration: int = 0):
@@ -146,7 +160,11 @@ class SegmentationVisualization:
         :param undo_preprocessing_func: a function to convert preprocessed images tensor into a batch of cv2-like images
         :param image_scale:             scale factor for output image
         """
-        image_np = undo_preprocessing_func(image_tensor.detach()).type(dtype=torch.uint8).cpu()
+        image_tensor = image_tensor.detach()
+        if use_plotly:
+            image_np = image_tensor.cpu().numpy()
+        else:
+            image_np = undo_preprocessing_func(image_tensor).type(dtype=torch.uint8).cpu()
 
         if names is None:
             names = ['_'.join([prefix, 'seg', str(batch_name), str(i)]) if prefix == 'val' else \
@@ -159,52 +177,63 @@ class SegmentationVisualization:
             preds = pred_mask[i].detach().cpu().numpy()
             targets = target_mask[i].detach().cpu().numpy()
 
-            img, mask_dict = SegmentationVisualization._visualize_image(image_np[i], preds, targets, num_classes)
-            if prefix == 'val':
-                logger.add_mask(names[i], img, mask_dict, global_step=iteration)
+            if use_plotly:
+                fig = SegmentationVisualization.visualize_with_plotly(image_np[i], preds, targets, num_classes)
+                if prefix == 'val':
+                    logger.add_plotly_figure(names[i], fig, global_step=iteration)
+                else:
+                    logger.add_plotly_figure(names[i], fig)
             else:
-                logger.add_image_mask_to_sequence(SegmentationVisualizationCallback.test_sequence_name,
-                                                  names[i], img, mask_dict)
+                img, mask_dict = SegmentationVisualization._visualize_image(image_np[i], preds, targets, num_classes)
+                if prefix == 'val':
+                    logger.add_mask(names[i], img, mask_dict, global_step=iteration)
+                else:
+                    logger.add_image_mask_to_sequence(SegmentationVisualizationCallback.test_sequence_name,
+                                                    names[i], img, mask_dict)
+
+    @staticmethod
+    def visualize_with_plotly(image: np.ndarray, pred_mask: torch.Tensor, target_mask: torch.Tensor, classes):
+        """
+
+        :param image: numpy image
+        :param pred_mask: (C, H, W) tensor of classes in one hot encoding
+        :param target_mask: (H, W) tensor of classes
+        :param classes:
+        :return:
+        """
+        n_plots = image.shape[0] + 2
+        cols = min(n_plots, 4)
+        rows = int(np.ceil(n_plots / cols))
+        fig = make_subplots(rows=rows, cols=cols, shared_xaxes=True, shared_yaxes=True)
+        pred_mask = torch.tensor(pred_mask.copy())
+        target_mask = torch.tensor(target_mask.copy())
+
+        for i in range(image.shape[0]):
+            row = i // cols + 1
+            col = i % cols + 1
+            trace = go.Heatmap(z=image[i], showlegend=False, colorscale='viridis', showscale=False, name=f"channel_{i}")
+            fig.add_trace(trace, row=row, col=col)
+            
+        
+        fig.add_trace(go.Heatmap(z=pred_mask.argmax(dim=0).numpy(), showlegend=False, showscale=False, name="preds", zmin=0, zmax=len(classes) - 1),
+                      row=(n_plots - 2) // cols + 1, col=(n_plots - 2) % cols + 1)
+        fig.add_trace(go.Heatmap(z=target_mask.numpy(), showlegend=False, showscale=False, name="gt", zmin=0, zmax=len(classes) - 1),
+                      row=(n_plots - 1) // cols + 1, col=(n_plots - 1) % cols + 1)
+        
+        min_size = 192
+        width = target_mask.shape[1]
+        height = target_mask.shape[0]
+        if width < min_size:
+            ratio = width / height
+            width = min_size
+            height = min_size // ratio
+
+        fig.update_layout(width=width*cols, height=height*rows, margin=dict(t=100, b=100, l=50, r=50))
+        
+        return fig
 
 
-# class MlflowCallback(PhaseCallback):
-#     """
-#     A callback that logs metrics to MLFlow.
-#     """
-#
-#     def __init__(self, phase: Phase, freq: int,
-#                  client: MLRun,
-#                  params: Mapping = None
-#                  ):
-#         """
-#         param phase: phase to log metrics for
-#         param freq: frequency of logging
-#         param client: MLFlow client
-#         """
-#
-#         if phase == Phase.TRAIN_EPOCH_END:
-#             self.prefix = 'train_'
-#         elif phase == Phase.VALIDATION_EPOCH_END:
-#             self.prefix = 'val_'
-#         else:
-#             raise NotImplementedError('Unrecognized Phase')
-#
-#         super(MlflowCallback, self).__init__(phase)
-#         self.freq = freq
-#         self.client = client
-#
-#         if params:
-#             self.client.log_params(params)
-#
-#     def __call__(self, context: PhaseContext):
-#         """
-#         Logs metrics to MLFlow.
-#             param context: context of the current phase
-#         """
-#         if context.epoch % self.freq == 0:
-#             self.client.log_metrics({self.prefix + k: v for k, v in context.metrics_dict.items()})
-
-
+# Deprecated
 class MetricsLogCallback(PhaseCallback):
     """
     A callback that logs metrics to MLFlow.
@@ -234,7 +263,7 @@ class MetricsLogCallback(PhaseCallback):
             param context: context of the current phase
         """
         if self.phase == Phase.TRAIN_EPOCH_END:
-            context.sg_logger.add_scalar('epoch', context.epoch)
+            context.sg_logger.add_summary({'epoch': context.epoch})
         if context.epoch % self.freq == 0:
             context.sg_logger.add_scalars({self.prefix + k: v for k, v in context.metrics_dict.items()})
 
@@ -306,6 +335,35 @@ class AuxMetricsUpdateCallback(MetricsUpdateCallback):
             context.loss_avg_meter.update(context.loss_log_items, len(context.inputs))
 
 
+class PerExampleMetricCallback(Callback):
+    def __init__(self, phase: Phase):
+        super().__init__()
+        self.metrics_dict = defaultdict(dict)
+        
+    def register(self, img_name, metric_name, res):
+        if isinstance(res, dict):
+            for sub_name, value in res.items():
+                self.register(img_name, sub_name, value)
+        elif isinstance(res, torch.Tensor):
+                self.metrics_dict[metric_name][img_name] = res.item()
+        else:
+            self.metrics_dict[metric_name][img_name] = res
+        
+
+    def on_test_batch_end(self, context: PhaseContext):
+        metrics = context.metrics_compute_fn.clone()
+        for pred, gt, name in zip(context.preds, context.target, context.input_name):
+            metrics.reset()
+            for metric_name, metric_fn in metrics.items():
+                res = metric_fn(pred.unsqueeze(0), gt.unsqueeze(0))  
+                self.register(name, metric_name, res)
+
+                
+    def on_test_loader_end(self, context: PhaseContext) -> None:
+        test_results = pd.DataFrame(self.metrics_dict)
+        context.sg_logger.add_table("test_results", test_results, test_results.shape[1], test_results.shape[0])
+        
+        
 class PolyLR(LRCallbackBase):
     def __init__(self, poly_exp, max_epochs, **kwargs):
         super().__init__(Phase.TRAIN_BATCH_STEP, **kwargs)

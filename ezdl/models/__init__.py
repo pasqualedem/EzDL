@@ -5,6 +5,8 @@ from ezdl.models.segnet import SegNet
 from ezdl.models.dummy import Random, SingleConv
 from ezdl.models.deeplab import deeplabv3_resnet50
 from ezdl.models.lawin import Lawin, SplitLawin, DoubleLawin
+from ezdl.models.base import WrappedModel
+from super_gradients.training.models.kd_modules.kd_module import KDOutput
 
 from ezdl.models.kd.feature import \
     FeatureDistillationModule, \

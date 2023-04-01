@@ -285,3 +285,26 @@ class BaseSGLogger(AbstractSGLogger):
     def url(self):
         return "NoURL"
 
+
+class AbstractRunWrapper:
+    def get_params(self):
+        raise NotImplementedError("get_params() not implemented in AbstractRunWrapper")
+    
+    def update_params(self, params):
+        raise NotImplementedError("update_params() not implemented in AbstractRunWrapper")
+    
+    def get_summary(self):
+        raise NotImplementedError("get_summary() not implemented in AbstractRunWrapper")
+    
+    @property
+    def id(self):
+        raise NotImplementedError("id not implemented in AbstractRunWrapper")
+    
+    @property
+    def group(self):
+        raise NotImplementedError("group not implemented in AbstractRunWrapper")
+    
+    def get_local_checkpoint_path(self, phases):
+        raise NotImplementedError("get_local_checkpoint_path not implemented in AbstractRunWrapper")
+    
+     

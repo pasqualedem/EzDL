@@ -8,6 +8,15 @@ from ezdl.models.backbones import *
 from ezdl.models.layers import trunc_normal_
 
 
+class WrappedModel(nn.Module):
+    def __init__(self, module):
+        super(WrappedModel, self).__init__()
+        self.module = module  # that I actually define.
+
+    def forward(self, *inputs, **kwargs):
+        return self.module(*inputs, **kwargs)
+
+
 class BaseModel(nn.Module):
     def __init__(self, backbone: str = 'MiT-B0', input_channels: int = 3, backbone_pretrained: bool = False) -> None:
         super().__init__()

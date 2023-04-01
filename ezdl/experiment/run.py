@@ -1,17 +1,20 @@
 import gc
 import sys
 import os
-import pandas as pd
+import traceback
 
 from copy import deepcopy
 from requests.exceptions import ConnectionError
 
 from super_gradients.training.utils.callbacks import Phase
 from codecarbon import EmissionsTracker, OfflineEmissionsTracker
+from ezdl.logger.basesg_logger import AbstractRunWrapper
 
 from ezdl.logger.text_logger import get_logger
 from ezdl.callbacks import MetricsLogCallback, callback_factory
 from ezdl.experiment.kd_seg_trainer import KDSegTrainer
+from ezdl.experiment.ez_trainer import EzTrainer
+from ezdl.experiment.kd_ez_trainer import KDEzTrainer
 from ezdl.experiment.parameters import parse_params
 from ezdl.experiment.seg_trainer import SegmentationTrainer
 from ezdl.utils.utilities import dict_to_yaml_string, values_to_number, nested_dict_update
@@ -57,9 +60,11 @@ class Run:
         self.seg_trainer = None
         try:
             self.parse_params(params)
-            trainer_class = KDSegTrainer if self.kd else SegmentationTrainer
+            # trainer_class = KDSegTrainer if kd else SegmentationTrainer
+            trainer_class = KDEzTrainer if self.kd else EzTrainer
             self.seg_trainer = trainer_class(
-                experiment_name=self.params['experiment']['group'],
+                project_name=self.params['experiment']['name'],
+                group_name=self.params['experiment']['group'],
                 ckpt_root_dir=self.params['experiment']['tracking_dir'] or 'experiments',
             )
             self.dataset = self.seg_trainer.init_dataset \
@@ -67,54 +72,46 @@ class Run:
             self.seg_trainer.init_model(params, False, None)
             self.seg_trainer.init_loggers({"in_params": params}, deepcopy(self.train_params))
             logger.info(f"Input params: \n\n {dict_to_yaml_string(params)}")
+            self.seg_trainer.print_model_summary()
             self._init_carbon_tracker()
         except Exception as e:
             if (
                 self.seg_trainer is not None
                 and self.seg_trainer.sg_logger is not None
             ):
-                self.seg_trainer.sg_logger.close(True)
+                self.seg_trainer.sg_logger.close(really=True, failed=True)
+            traceback.print_exception(type(e), e, e.__traceback__)
             raise e
 
-    def resume(self, wandb_run, updated_config, phases):
+    def resume(self, logger_run: AbstractRunWrapper, updated_config, phases):
         try:
             try:
-                self.params = values_to_number(wandb_run.config['in_params'])
+                self.params = values_to_number(logger_run.get_params())
             except KeyError as e:
                 raise RuntimeError("No params recorded for run, just delete it!") from e
             self.params = nested_dict_update(self.params, updated_config)
             self.phases = phases
-            wandb_run.config['in_params'] = self.params
-            wandb_run.update()
+            logger_run.update_params(self.params)
             self.train_params, self.test_params, self.dataset_params, callbacks, kd = parse_params(self.params)
             self.train_callbacks, self.val_callbacks, self.test_callbacks = callbacks
 
-            trainer_class = KDSegTrainer if kd else SegmentationTrainer
+            # trainer_class = KDSegTrainer if kd else SegmentationTrainer
+            trainer_class = KDEzTrainer if kd else EzTrainer
             self.seg_trainer = trainer_class(
-                experiment_name=self.params['experiment']['group'],
+                project_name=self.params['experiment']['name'],
+                group_name=self.params['experiment']['group'],
                 ckpt_root_dir=self.params['experiment']['tracking_dir'] or 'experiments',
             )
             self.dataset = self.seg_trainer.init_dataset \
-                (wandb_run.config['in_params']['dataset_interface'], dataset_params=deepcopy(self.dataset_params))
-            track_dir = wandb_run.config.get('in_params').get('experiment').get('tracking_dir') or 'experiments'
-            checkpoint_path_group = os.path.join(track_dir, wandb_run.group, 'experiments')
-            run_folder = list(filter(lambda x: str(wandb_run.id) in x, os.listdir(checkpoint_path_group)))
-            checkpoint_path = None
-            if 'epoch' in wandb_run.summary:
-                ckpt = 'ckpt_latest.pth' if 'train' in phases else 'ckpt_best.pth'
-                try:
-                    checkpoint_path = os.path.join(checkpoint_path_group, run_folder[0], 'files', ckpt)
-                except IndexError as exc:
-                    logger.error(f"{wandb_run.id} not found in {checkpoint_path_group}")
-                    raise ValueError(
-                        f"{wandb_run.id} not found in {checkpoint_path_group}"
-                    ) from exc
+                (logger_run.get_params()['dataset_interface'], dataset_params=deepcopy(self.dataset_params))
+            checkpoint_path = logger_run.get_local_checkpoint_path(phases)
             self.seg_trainer.init_model(self.params, True, checkpoint_path)
-            self.seg_trainer.init_loggers({"in_params": self.params}, self.train_params, run_id=wandb_run.id)
+            self.seg_trainer.init_loggers({"in_params": self.params}, self.train_params, run_id=logger_run.id, logger_run=logger_run)
             self._init_carbon_tracker()
         except Exception as e:
-            if self.seg_trainer is not None:
-                self.seg_trainer.sg_logger.close(really=True)
+            if self.seg_trainer is not None and self.seg_trainer.sg_logger is not None:
+                self.seg_trainer.sg_logger.close(really=True, failed=True)
+            traceback.print_exception(type(e), e, e.__traceback__)
             raise e
 
     def launch(self):
@@ -128,7 +125,7 @@ class Run:
             if 'inference' in self.phases:
                 inference(self.seg_trainer, self.run_params, self.dataset)
         finally:
-            if self.seg_trainer is not None:
+            if self.seg_trainer is not None and self.seg_trainer.sg_logger is not None:
                 self.upload_emissions()
                 self.seg_trainer.sg_logger.close(True)
                 
@@ -154,14 +151,14 @@ def train(seg_trainer, train_params, dataset, train_callbacks, val_callbacks):
     cbcks = [callback_factory(name, params, seg_trainer=seg_trainer, dataset=dataset, loader=dataset.train_loader)
              for name, params in {**train_callbacks, **val_callbacks}.items()
              ]
-    cbcks = [
-        MetricsLogCallback(Phase.TRAIN_EPOCH_END, freq=1),
-        MetricsLogCallback(Phase.VALIDATION_EPOCH_END, freq=1),
-        *cbcks
-    ]
+    # cbcks = [
+    #     MetricsLogCallback(Phase.TRAIN_EPOCH_END, freq=1),
+    #     MetricsLogCallback(Phase.VALIDATION_EPOCH_END, freq=1),
+    #     *cbcks
+    # ]
     train_params["phase_callbacks"] = cbcks
 
-    seg_trainer.train(train_params)
+    seg_trainer.train(training_params=train_params)
     gc.collect()
 
 

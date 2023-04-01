@@ -3,13 +3,15 @@ from __future__ import annotations
 import copy
 import gc
 import os
+import pandas as pd
+
 from typing import Mapping
 from easydict import EasyDict
 
 from ezdl.experiment.resume import ExpLog
 from ezdl.experiment.run import Run
 from ezdl.experiment.resume import get_interrupted_run, retrieve_run_to_resume
-from ezdl.utils.grid import make_grid, linearize
+from ezdl.utils.grid import linearized_to_string, make_grid, linearize
 from ezdl.utils.utilities import nested_dict_update, update_collection
 from ezdl.logger.text_logger import get_logger
 
@@ -147,27 +149,35 @@ class Experimenter:
 
         for i, grid in enumerate(self.grids):
             info = f'Found {len(grid)} runs from grid {i}'
-            if i < self.exp_settings.start_from_grid:
+            last_grid = self.exp_settings.start_from_grid if self.exp_settings.start_from_grid is not None else len(self.grids)
+            if i < last_grid:
                 info += f', skipping grid {i} with {len(grid)} runs'
             logger.info(info)
         self.generate_grid_summary()
 
-        logger.info(f'Total runs found:              {self.gs.total_runs}')
-        logger.info(f'Total runs excluded by grids:  {self.gs.total_runs_excl_grid}')
-        logger.info(f'Total runs excluded:           {self.gs.total_runs_excl}')
-        logger.info(f'Total runs to run:             {self.gs.total_runs_to_run}')
-        print('='*100 + '\n')
+        # logger.info(f'Total runs found:              {self.gs.total_runs}')
+        # logger.info(f'Total runs excluded by grids:  {self.gs.total_runs_excl_grid}')
+        # logger.info(f'Total runs excluded:           {self.gs.total_runs_excl}')
+        # logger.info(f'Total runs to run:             {self.gs.total_runs_to_run}')
 
         if self.exp_settings.excluded_files:
             os.environ['WANDB_IGNORE_GLOBS'] = self.exp_settings.excluded_files
+            
+        print_preview(self, self.gs, self.grids, dot_elements)
+        print('='*100 + '\n')
+        
         return self.gs, self.grids, dot_elements
 
     def generate_grid_summary(self):
         total_runs = sum(len(grid) for grid in self.grids)
-        total_runs_excl_grid = total_runs - sum(
-            len(grid) for grid in self.grids[self.exp_settings.start_from_grid :]
-        )
-        total_runs_excl = total_runs_excl_grid + self.exp_settings.start_from_run
+        if self.exp_settings.start_from_grid is None:
+            total_runs_excl_grid = total_runs - len(self.grids[-1])
+            total_runs_excl = total_runs
+        else:
+            total_runs_excl_grid = total_runs - sum(
+                len(grid) for grid in self.grids[self.exp_settings.start_from_grid :]
+            )
+            total_runs_excl = total_runs_excl_grid + self.exp_settings.start_from_run
         total_runs_to_run = total_runs - total_runs_excl
         self.gs = GridSummary(
             total_runs=total_runs,
@@ -185,10 +195,14 @@ class Experimenter:
         status_manager = StatusManager(len(self.grids))
         if self.exp_settings.resume_last:
             logger.info("+ another run to finish!")
-            grid_len = len(self.grids[self.exp_settings.start_from_grid])
             grid_list = [(i, j) for i in range(len(self.grids)) for j in range(len(self.grids[i]))]
-            index = grid_list.index((self.exp_settings.start_from_grid, self.exp_settings.start_from_run))
-            sg, sr = grid_list[index - 1]
+            if self.exp_settings.start_from_grid is None:
+                grid_len = len(self.grids[-1])
+                sg, sr = grid_list[-1]
+            else:
+                grid_len = len(self.grids[self.exp_settings.start_from_grid])
+                index = grid_list.index((self.exp_settings.start_from_grid, self.exp_settings.start_from_run))
+                sg, sr = grid_list[index - 1]
             try:
                 exp_log.insert_run(sg, sr)
                 run = get_interrupted_run(self.exp_settings)
@@ -266,3 +280,21 @@ def experiment(settings: Mapping, param_path: str = "local variable"):
     grid_summary, grids, cartesian_elements = experimenter.calculate_runs(settings)
 
     experimenter.execute_runs()
+
+
+def preview(settings: Mapping, param_path: str = "local variable"):
+    print(f'Loaded parameters from {param_path}')
+
+    experimenter = Experimenter()
+    _, _, _ = experimenter.calculate_runs(settings)
+    
+    
+def print_preview(experimenter, grid_summary, grids, cartesian_elements):
+    summary_series = pd.concat([pd.Series(grid_summary), pd.Series(experimenter.exp_settings.__dict__)])
+    summary_string = f"\n{summary_series.to_string()}\n"
+    
+    dfs = [pd.DataFrame(linearized_to_string(dot_element), columns=[f"Grid {i}", f"N. runs: {len(grid)}"])
+           for i, (dot_element, grid) in enumerate(zip(cartesian_elements, grids))]
+    mark_grids = "\n\n".join(df.to_string(index=False) for df in dfs)
+    mark_grids = "Most important parameters for each grid \n" + mark_grids
+    logger.info(f"\n{summary_string}\n{mark_grids}")
