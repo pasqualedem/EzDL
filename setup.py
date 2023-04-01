@@ -36,7 +36,7 @@ setuptools.setup(
         "ptflops",
         "ruamel.yaml",
         "scipy",
-        "super-gradients",
+        "super-gradients==3.0.7",
         "torch",
         "torchaudio",
         "torchmetrics",

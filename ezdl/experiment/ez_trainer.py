@@ -101,6 +101,7 @@ from ezdl.utils.folders import get_checkpoints_dir_path
 from ezdl.logger.basesg_logger import BaseSGLogger as BaseLogger
 from ezdl.logger import LOGGERS
 from ezdl.logger.text_logger import get_logger
+from ezdl.metrics import get_metric_titles_components_mapping
 
 logger = get_logger(__name__)
 
@@ -880,7 +881,7 @@ class EzTrainer:
                     logger.warning("[Warning] Checkpoint does not include EMA weights, continuing training without EMA.")
 
         self.run_validation_freq = self.training_params.run_validation_freq
-        validation_results_tuple = (0, 0)
+        validation_results_tuple = ()
         inf_time = 0
         timer = core_utils.Timer(device_config.device)
 
@@ -1792,7 +1793,7 @@ class EzTrainer:
         if use_ema_net and self.ema_model is not None:
             keep_model = self.net
             self.net = self.ema_model.ema
-            
+        
         self._prep_for_test(
             test_loader=test_loader,
             loss=loss,
@@ -1801,6 +1802,16 @@ class EzTrainer:
             test_phase_callbacks=test_phase_callbacks,
         )
 
+        context = PhaseContext(
+            criterion=self.criterion,
+            device=self.device,
+            sg_logger=self.sg_logger,
+            context_methods=self._get_context_methods(Phase.TEST_BATCH_END),
+        )        
+        if test_metrics_list:
+            context.update_context(test_metrics=self.test_metrics)
+
+        self.phase_callback_handler.on_test_loader_start(context)
         metrics_values = self.evaluate(
             data_loader=self.test_loader,
             metrics=self.test_metrics,
@@ -1808,6 +1819,7 @@ class EzTrainer:
             silent_mode=silent_mode,
             metrics_progress_verbose=metrics_progress_verbose,
         )
+        self.phase_callback_handler.on_test_loader_end(context)
 
         # SWITCH BACK BETWEEN NETS SO AN ADDITIONAL TRAINING CAN BE DONE AFTER TEST
         if use_ema_net and self.ema_model is not None:
@@ -1821,7 +1833,7 @@ class EzTrainer:
         if self.test_loader.num_workers > 0:
             self.test_loader._iterator._shutdown_workers()
 
-        metric_names = test_metrics.keys()
+        metric_names = get_metrics_titles(self.test_metrics)
         loss_names = self.loss_logging_items_names
         if len(loss_names) + len(metric_names) != len(metrics_values):
             raise ValueError(f'Number of loss names ({len(loss_names)}) + number of metric names ({len(metric_names)}) '
@@ -1830,11 +1842,13 @@ class EzTrainer:
         metrics = dict(zip(metric_names, metrics_values[len(loss_names):]))
         metrics = {**losses, **metrics}
 
-        if 'conf_mat' in metrics:
-            metrics.pop('conf_mat')
-            cf = test_metrics['conf_mat'].get_cf()
-            logger.info(f'Confusion matrix:\n{cf}')
-            self.sg_logger.add_table('confusion_matrix', cf.cpu(),
+        conf_mat_name = "conf_mat"
+        if conf_mat_name in test_metrics:
+            for element in test_metrics[conf_mat_name].component_names:
+                metrics.pop(element)
+            conf_mat = test_metrics[conf_mat_name].get_cf()
+            logger.info(f'Confusion matrix:\n{conf_mat}')
+            self.sg_logger.add_table('confusion_matrix', conf_mat.cpu(),
                                      columns=list(self.dataset_interface.testset.CLASS_LABELS.values()),
                                      rows=list(self.dataset_interface.testset.CLASS_LABELS.values())
                                      )
@@ -2022,14 +2036,35 @@ class EzTrainer:
     def _write_to_disk_operations(self, train_metrics: tuple, validation_results: tuple, inf_time: float, epoch: int, context: PhaseContext):
         """Run the various logging operations, e.g.: log file, Tensorboard, save checkpoint etc."""
         # STORE VALUES IN A TENSORBOARD FILE
-        train_results = list(train_metrics) + list(validation_results) + [inf_time]
+        valid_name = "Valid_"
+        train_name = "Train_"
         all_titles = self.results_titles + ["Inference Time"]
+        if (epoch + 1) % self.run_validation_freq == 0: # Remove validation metrics if not validating in this epoch
+            train_results = list(train_metrics) + list(validation_results) + [inf_time]
+        else:
+            all_titles = list(filter(lambda x: x[:len(valid_name)] != valid_name, all_titles))
+            train_results = list(train_metrics) + [inf_time]
 
         result_dict = {all_titles[i]: train_results[i] for i in range(len(train_results))}
-        self.sg_logger.add_scalars(tag_scalar_dict=result_dict, global_step=epoch)
+
+        valids =  get_metric_titles_components_mapping(self.valid_metrics)
+        valids = {valid_name + k: valid_name + v for k, v in valids.items()}
+        trains = get_metric_titles_components_mapping(self.train_metrics)
+        trains = {train_name + k: train_name + v for k, v in trains.items()}
+        losses = get_metric_titles_components_mapping({'loss': self.criterion}) if hasattr(self.criterion, "component_names") else \
+            {self.loss_logging_items_names[0]: 'loss'}
+        train_losses = {train_name + k: train_name + v for k, v in losses.items()}
+        valid_losses = {valid_name + k: valid_name + v for k, v in losses.items()}
+        series_dict = {**trains, **valids, **train_losses, **valid_losses, 'Inference Time': "Inference Time"}
+        
+        push_dict = {}
+        for key in result_dict.keys() & series_dict.keys():
+            push_dict[key] = {'value': result_dict[key], 'series': series_dict[key]}
+        
+        self.sg_logger.add_scalars(tag_scalar_dict=push_dict, global_step=epoch)
 
         # SAVE THE CHECKPOINT
-        if self.training_params.save_model:
+        if self.training_params.save_model and (epoch + 1) % self.run_validation_freq == 0:
             self._save_checkpoint(self.optimizer, epoch + 1, validation_results, context)
 
     def _write_lrs(self, epoch):

@@ -116,6 +116,9 @@ class WandBSGLogger(BaseSGLogger):
 
     @multi_process_safe
     def add_scalars(self, tag_scalar_dict: dict, global_step: int = 0):
+        for name, value in tag_scalar_dict.items():
+            if isinstance(value, dict):
+                tag_scalar_dict[name] = value['value']
         wandb.log(data=tag_scalar_dict, step=global_step)
 
     @multi_process_safe

@@ -41,10 +41,8 @@ parameters:
     # list of metrics to load from PyTorch metrics
     # where the values are their parameters used for training
     f1: &metric_params
-      average: [macro]
       num_classes: &num_classes  
         [10]
-      mdmc_average: [global]
   test_metrics:
     # list of metrics to load from PyTorch metrics
     # where the values are their parameters used for validation and test

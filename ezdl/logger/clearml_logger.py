@@ -80,13 +80,18 @@ class ClearMLLogger(BaseSGLogger):
         self.run.connect(fix_clearml_empty_map(config), name=tag)
 
     @multi_process_safe
-    def add_scalar(self, tag: str, scalar_value: float, global_step: int = 0):
-        self.run.get_logger().report_scalar(title=tag, series=tag, value=scalar_value, iteration=global_step)
+    def add_scalar(self, tag: str, scalar_value: float, global_step: int = 0, series=None):
+        if series is None:
+            series = tag
+        self.run.get_logger().report_scalar(title=series, series=tag, value=scalar_value, iteration=global_step)
 
     @multi_process_safe
     def add_scalars(self, tag_scalar_dict: dict, global_step: int = 0):
         for name, value in tag_scalar_dict.items():
-            self.add_scalar(name, value, global_step=global_step)
+            if isinstance(value, dict):
+                self.add_scalar(name, value['value'], global_step=global_step, series=value['series'])
+            else:
+                self.add_scalar(name, value, global_step=global_step)
 
     @multi_process_safe
     def add_image(self, tag: str, image: Union[torch.Tensor, np.array, Image.Image], data_format='CHW', global_step: int = 0):
@@ -120,8 +125,8 @@ class ClearMLLogger(BaseSGLogger):
     @multi_process_safe
     def add_table(self, tag, data, columns, rows):
         if not isinstance(data, pd.DataFrame):
-            table_plot = pd.DataFrame(data=data, columns=columns)
-        self.run.get_logger().report_table(title=tag, series=tag, table_plot=table_plot)
+            data = pd.DataFrame(data=data, columns=columns)
+        self.run.get_logger().report_table(title=tag, series=tag, table_plot=data)
 
     @multi_process_safe
     def add_plot(self, tag: str, values: pd.DataFrame, xtitle, ytitle, classes_marker=None):

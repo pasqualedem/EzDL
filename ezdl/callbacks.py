@@ -1,7 +1,9 @@
+from collections import defaultdict
 import os
 import torch
 
 import numpy as np
+import pandas as pd
 
 from typing import Union, Callable, Mapping, Any, List
 
@@ -9,6 +11,7 @@ from super_gradients.training.utils.callbacks import *
 from super_gradients.training.utils.early_stopping import EarlyStop
 from super_gradients.training.utils.utils import AverageMeter
 from super_gradients.training.models.kd_modules.kd_module import KDOutput
+from torchmetrics.functional import precision_recall, f1_score
 from PIL import ImageColor, Image
 import plotly.graph_objs as go
 from plotly.subplots import make_subplots
@@ -55,7 +58,7 @@ class SegmentationVisualizationCallback(PhaseCallback):
     """
 
     def __init__(self, logger, phase: Phase, freq: int, num_classes, batch_idxs=None, last_img_idx_in_batch: int = None,
-                 undo_preprocessing=None, use_plotly=False):
+                 undo_preprocessing=None, use_plotly=False, metrics=False):
         super(SegmentationVisualizationCallback, self).__init__(phase)
         if batch_idxs is None:
             batch_idxs = [0]
@@ -65,10 +68,14 @@ class SegmentationVisualizationCallback(PhaseCallback):
         self.last_img_idx_in_batch = last_img_idx_in_batch
         self.undo_preprocesing = undo_preprocessing
         self.use_plotly = use_plotly
+        self.metrics = metrics
         self.prefix = 'train' if phase == Phase.TRAIN_EPOCH_END else 'val' \
             if phase == Phase.VALIDATION_BATCH_END else 'test'
         if phase == Phase.TEST_BATCH_END:
             logger.create_image_mask_sequence(f'{self.prefix}_seg')
+            
+    def calculate_metrics(self, preds, target):
+        pass
 
     def __call__(self, context: PhaseContext):
         epoch = context.epoch if context.epoch is not None else 0
@@ -79,6 +86,8 @@ class SegmentationVisualizationCallback(PhaseCallback):
                 preds = context.preds.main.clone()
             else:
                 preds = context.preds.clone()
+            if self.metrics and self.use_plotly:
+                metrics = None
             SegmentationVisualization.visualize_batch(logger=context.sg_logger,
                                                       image_tensor=context.inputs,
                                                       pred_mask=preds,
@@ -224,6 +233,7 @@ class SegmentationVisualization:
         return fig
 
 
+# Deprecated
 class MetricsLogCallback(PhaseCallback):
     """
     A callback that logs metrics to MLFlow.
@@ -325,6 +335,35 @@ class AuxMetricsUpdateCallback(MetricsUpdateCallback):
             context.loss_avg_meter.update(context.loss_log_items, len(context.inputs))
 
 
+class PerExampleMetricCallback(Callback):
+    def __init__(self, phase: Phase):
+        super().__init__()
+        self.metrics_dict = defaultdict(dict)
+        
+    def register(self, img_name, metric_name, res):
+        if isinstance(res, dict):
+            for sub_name, value in res.items():
+                self.register(img_name, sub_name, value)
+        elif isinstance(res, torch.Tensor):
+                self.metrics_dict[metric_name][img_name] = res.item()
+        else:
+            self.metrics_dict[metric_name][img_name] = res
+        
+
+    def on_test_batch_end(self, context: PhaseContext):
+        metrics = context.metrics_compute_fn.clone()
+        for pred, gt, name in zip(context.preds, context.target, context.input_name):
+            metrics.reset()
+            for metric_name, metric_fn in metrics.items():
+                res = metric_fn(pred.unsqueeze(0), gt.unsqueeze(0))  
+                self.register(name, metric_name, res)
+
+                
+    def on_test_loader_end(self, context: PhaseContext) -> None:
+        test_results = pd.DataFrame(self.metrics_dict)
+        context.sg_logger.add_table("test_results", test_results, test_results.shape[1], test_results.shape[0])
+        
+        
 class PolyLR(LRCallbackBase):
     def __init__(self, poly_exp, max_epochs, **kwargs):
         super().__init__(Phase.TRAIN_BATCH_STEP, **kwargs)
