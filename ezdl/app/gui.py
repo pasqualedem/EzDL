@@ -2,6 +2,9 @@ import streamlit as st
 import wandb
 import os
 
+import requests
+import threading
+
 from ruamel.yaml.scanner import ScannerError
 from streamlit_ace import st_ace
 from streamlit.web import bootstrap
@@ -159,8 +162,12 @@ class Interface:
             st.markdown(st.session_state.mk_summary, unsafe_allow_html=True)
         with col2:
             st.write(st.session_state.mk_params)
-        if st.button("Launch!"):
-            self.experiment()
+        if st.session_state.get('running'):
+            if st.button("Get updates"):
+                self.update_experiment()
+        else:
+            if st.button("Launch!"):
+                self.start_experiment()
 
 
     def manipulation_interface(self):
@@ -270,7 +277,13 @@ class Interface:
         if status.run_name is not None:
             self.mk_run_link.markdown(logger_run_link(status.run_name, status.run_url))
 
-    def experiment(self):
+    def start_experiment(self):
+        response = requests.post("http://localhost:8502/experiment", json=st.session_state.experimenter.dict())
+        print(response.json())
+        if response.json()['running']:
+            st.session_state['running'] = True
+            
+    def update_experiment(self):
         self.mk_progress = st.text("Starting... wait!")
         bars = [st.progress(0) for i in range(len(st.session_state.experimenter.grids))]
         col1, col2 = st.columns(2)
@@ -281,10 +294,24 @@ class Interface:
         with col2:
             self.failures = MkFailures()
             self.mk_failures = st.markdown("### Failures")
-        for status in st.session_state.experimenter.execute_runs_generator():
+        status = requests.get("http://localhost:8502/status").json()
+        print(status)
+        self.update_bars(bars, status)
+        
+    def start_polling(self, bars):
+        if st.session_state.get('polling', False):
+            return
+        thread = threading.Thread(target=self.poll_endpoint, args=[bars])
+        print("Starting thread")
+        thread.start()
+        print("Started thread")
+        st.session_state['polling'] = True
+        
+    def poll_endpoint(self, bars):
+        while True:
+            status = requests.get("http://localhost:8502/status").json()
+            print(status)
             self.update_bars(bars, status)
-        st.balloons()
-
 
 def launch_streamlit(args):
     cli_args = ['--grid', str(args.grid),

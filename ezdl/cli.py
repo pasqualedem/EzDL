@@ -93,6 +93,12 @@ def app(resume, file, dir, grid, run):
         run=run
     )
     frontend(args)
+    
+    
+@main.command("server")
+def server():
+    from ezdl.api.server import server
+    server()
 
 
 @main.command("complexity")

@@ -49,6 +49,8 @@ setuptools.setup(
         "streamlit",
         "streamlit-ace",
         "easydict",
-        "clearml"
+        "clearml",
+        "fastapi",
+        "uvicorn"
     ]
 )

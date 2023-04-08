@@ -5,8 +5,9 @@ import gc
 import os
 import pandas as pd
 
-from typing import Mapping
+from typing import Dict, Mapping, Optional
 from easydict import EasyDict
+from pydantic import BaseModel, validator
 
 from ezdl.experiment.resume import ExpLog
 from ezdl.experiment.run import Run
@@ -18,23 +19,19 @@ from ezdl.logger.text_logger import get_logger
 logger = get_logger(__name__)
 
 
-class GridSummary:
-    def __init__(self,
-                 total_runs,
-                 total_runs_excl_grid,
-                 total_runs_to_run,
-                 total_runs_excl,
-                 ):
-        self.total_runs = total_runs
-        self.total_runs_excl_grid = total_runs_excl_grid
-        self.total_runs_to_run = total_runs_to_run
-        self.total_runs_excl = total_runs_excl
+class GridSummary(BaseModel):
+    total_runs: int
+    total_runs_excl_grid: int
+    total_runs_to_run: int
+    total_runs_excl: int
 
     def update(self, d):
-        self.total_runs = d.get("total_runs") or self.total_runs
-        self.total_runs_excl_grid = d.get("total_runs_excl_grid") or self.total_runs_excl_grid
-        self.total_runs_to_run = d.get("total_runs_to_run") or self.total_runs_to_run
-        self.total_runs_excl = d.get("total_runs_excl") or self.total_runs_to_run
+        return self.copy(
+            total_runs=d.get("total_runs", self.total_runs),
+            total_runs_excl_grid=d.get("total_runs_excl_grid", self.total_runs_excl_grid),
+            total_runs_to_run=d.get("total_runs_to_run", self.total_runs_to_run),
+            total_runs_excl=d.get("total_runs_excl", self.total_runs_excl),
+        )
 
 
 class ExpSettings(EasyDict):
@@ -66,21 +63,20 @@ class ExpSettings(EasyDict):
         self.continue_with_errors = not e.continue_with_errors or self.continue_with_errors
 
 
-class Status:
+class Status(BaseModel):
     STARTING = "starting"
     CRASHED = "crashed"
     FINISHED = "finished"
-
-    def __init__(self, grid, run, params, n_grids, grid_len, run_name=None, run_url=None):
-        self.grid = grid
-        self.run = run
-        self.params = params
-        self.status = self.STARTING
-        self.grid_len = grid_len
-        self.n_grids = n_grids
-        self.exception = None
-        self.run_name = run_name
-        self.run_url = run_url
+    
+    grid: int
+    run: int
+    params: dict
+    status: str =  STARTING
+    grid_len: int
+    n_grids: int
+    exception: str = None
+    run_name: str = None
+    run_url: str = None
 
     def finish(self):
         self.params = {}
@@ -116,14 +112,17 @@ class StatusManager:
         return self.cur_status.crash(exception)
 
 
-class Experimenter:
+class Experimenter(BaseModel):
+    gs: GridSummary = None
+    exp_settings: ExpSettings = ExpSettings()
+    grids: tuple[list[Mapping]] = None
+    
     EXP_FINISH_SEP = "#"*50 + " FINISHED " + "#"*50 + "\n"
     EXP_CRASHED_SEP = "|\\"*50 + "CRASHED" + "|\\"*50 + "\n"
-
-    def __init__(self):
-        self.gs = None
-        self.exp_settings = ExpSettings()
-        self.grids = None
+    
+    @validator('exp_settings')
+    def convert_to_easydict(cls, value: Dict) -> EasyDict:
+        return EasyDict(value)
 
     def calculate_runs(self, settings):
         base_grid = settings['parameters']
