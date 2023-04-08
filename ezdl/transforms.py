@@ -199,7 +199,7 @@ class PairRandomRotation(torch.nn.Module):
         interpolation: Default: InterpolationMode.BILINEAR
     """
 
-    def __init__(self, degree, interpolation=InterpolationMode.BILINEAR):
+    def __init__(self, degree, p=0.5, interpolation=InterpolationMode.BILINEAR):
         super().__init__()
         # _log_api_usage_once(self)
 
@@ -207,6 +207,7 @@ class PairRandomRotation(torch.nn.Module):
             self.degree = degree
         else:
             self.degree = [-degree, degree]
+        self.p = p
         self.interpolation = interpolation
         self.image_rotation = {}
 
@@ -220,12 +221,14 @@ class PairRandomRotation(torch.nn.Module):
         """
         pid = os.getpid()
         if pid in self.image_rotation:
-            value = self.image_rotation.pop(pid)
+            value, rotate = self.image_rotation.pop(pid)
         else:
+            rotate = torch.rand(1) < self.p
             value = torch.FloatTensor(1).uniform_(*self.degree)
-            self.image_rotation[pid] = value
+            self.image_rotation[pid] = value, rotate
 
-        return F.rotate(img.unsqueeze(0), value.item(), self.interpolation).squeeze(0)
+        return F.rotate(img.unsqueeze(0), value.item(), self.interpolation).squeeze(0) if rotate \
+            else img
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}(p={self.degree})"

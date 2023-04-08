@@ -352,7 +352,9 @@ class PerExampleMetricCallback(Callback):
 
     def on_test_batch_end(self, context: PhaseContext):
         metrics = context.metrics_compute_fn.clone()
-        for pred, gt, name in zip(context.preds, context.target, context.input_name):
+        if isinstance(context.preds, ComposedOutput):
+            preds = context.preds.main
+        for pred, gt, name in zip(preds, context.target, context.input_name):
             metrics.reset()
             for metric_name, metric_fn in metrics.items():
                 res = metric_fn(pred.unsqueeze(0), gt.unsqueeze(0))  
