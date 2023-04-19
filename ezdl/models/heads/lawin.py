@@ -126,8 +126,10 @@ class LawinHead(nn.Module):
         self.ratios = RATIOS
         if embed_dim >= 256:
             heads = [64, 16, 4]
-        else:
+        elif embed_dim >= 64:
             heads = [embed_dim//4, embed_dim//16, embed_dim//64]
+        else:
+            heads = [embed_dim//4, embed_dim//8, embed_dim//16]
 
         self.lawin_8 = LawinAttn(embed_dim, heads[0])
         self.lawin_4 = LawinAttn(embed_dim, heads[1])

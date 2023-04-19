@@ -2047,12 +2047,11 @@ class EzTrainer:
 
         result_dict = {all_titles[i]: train_results[i] for i in range(len(train_results))}
 
-        valids =  get_metric_titles_components_mapping(self.valid_metrics)
+        valids = get_metric_titles_components_mapping(self.valid_metrics)
         valids = {valid_name + k: valid_name + v for k, v in valids.items()}
         trains = get_metric_titles_components_mapping(self.train_metrics)
         trains = {train_name + k: train_name + v for k, v in trains.items()}
-        losses = get_metric_titles_components_mapping({'loss': self.criterion}) if hasattr(self.criterion, "component_names") else \
-            {self.loss_logging_items_names[0]: 'loss'}
+        losses = {log_item: 'loss' for log_item in self.loss_logging_items_names}
         train_losses = {train_name + k: train_name + v for k, v in losses.items()}
         valid_losses = {valid_name + k: valid_name + v for k, v in losses.items()}
         series_dict = {**trains, **valids, **train_losses, **valid_losses, 'Inference Time': "Inference Time"}
