@@ -39,7 +39,7 @@ def PerClassAUC(name, code):
 
 
 def get_multiclass(names, values):
-        macro = values.mean()
+        macro = values[~values.isnan()].mean()
         per_class = {f"{names[i]}": f1 for i, f1 in enumerate(values)}
         per_class[names[-1]] = macro
         return per_class

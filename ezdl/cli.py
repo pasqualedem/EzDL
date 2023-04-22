@@ -18,7 +18,7 @@ def exp_options(f):
     options = [
           click.option("--resume", is_flag=True, help='Resume the experiment'),
           click.option("--file", default="", help='Set the config file'),
-          click.option("--dir", default="", help='Set the local tracking directory'),
+          click.option("--dir", default=None, help='Set the local tracking directory'),
           click.option("--grid", type=int, default=0, help="Select the first grid to start from"),
           click.option("--run", type=int, default=0, help="Select the run in grid to start from"),
     ]

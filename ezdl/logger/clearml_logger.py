@@ -349,3 +349,12 @@ def restore_clearml_empty_map(dictionary):
         elif v == '__empty__':
             dictionary[k] = {}
     return dictionary
+
+
+def upload_to_clearml(task_name, project_name, files):
+    t = Task.get_task(task_name=task_name)
+    if t is None:
+        t = Task.create(task_name=task_name, project_name=project_name)
+    # add and upload a wildcard
+    for file in files:
+        t.upload_artifact(file, artifact_object=file)

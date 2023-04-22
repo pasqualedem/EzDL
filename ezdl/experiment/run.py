@@ -116,18 +116,25 @@ class Run:
 
     def launch(self):
         try:
-            if 'train' in self.phases:
-                train(self.seg_trainer, self.train_params, self.dataset, self.train_callbacks, self.val_callbacks)
-
-            if 'test' in self.phases:
-                test_metrics = self.seg_trainer.test(**self.test_params, test_phase_callbacks=self.test_callbacks)
-
-            if 'inference' in self.phases:
-                inference(self.seg_trainer, self.run_params, self.dataset)
+            return self._launch()
         finally:
             if self.seg_trainer is not None and self.seg_trainer.sg_logger is not None:
                 self.upload_emissions()
                 self.seg_trainer.sg_logger.close(True)
+
+    # TODO Rename this here and in `launch`
+    def _launch(self):
+        if 'train' in self.phases:
+            train(self.seg_trainer, self.train_params, self.dataset, self.train_callbacks, self.val_callbacks)
+        best_metric_val = self.seg_trainer.best_metric.item()
+        if 'test' in self.phases:
+            test_metrics = self.seg_trainer.test(**self.test_params, test_phase_callbacks=self.test_callbacks)
+
+        if 'inference' in self.phases:
+            inference(self.seg_trainer, self.run_params, self.dataset)
+        # metric = self.seg_trainer.best_metric.item()
+        logger.info(f"Best metric: {best_metric_val}")
+        return best_metric_val
                 
     def upload_emissions(self):
         self.carbon_tracker.stop()

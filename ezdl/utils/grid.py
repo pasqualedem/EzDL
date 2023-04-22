@@ -51,14 +51,14 @@ def delinearize(lin_dict):
     """
     # Take keys that are tuples
     filtered = list(filter(lambda x: isinstance(x[0], tuple), lin_dict.items()))
+    filtered.sort(key=lambda x: x[0][0])
     # Group it to make one level
     grouped = groupby(filtered, lambda x: x[0][0])
     # Create the new dict and apply recursively
     new_dict = {k: delinearize({extract(elem[0][1:]): elem[1] for elem in v}) for k, v in grouped}
     # Remove old items and put new ones
-    for key, value in filtered:
-        lin_dict.pop(key)
-    delin_dict = {**lin_dict, **new_dict}
+    base_values = {k: v for k, v in lin_dict.items() if (k, v) not in filtered}
+    delin_dict = {**base_values, **new_dict}
     return delin_dict
 
 

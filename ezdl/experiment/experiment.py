@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import gc
 import os
+import glob
 import pandas as pd
 
 from typing import Mapping
@@ -12,6 +13,7 @@ from ezdl.experiment.resume import ExpLog
 from ezdl.experiment.run import Run
 from ezdl.experiment.resume import get_interrupted_run, retrieve_run_to_resume
 from ezdl.utils.grid import linearized_to_string, make_grid, linearize
+from ezdl.utils.optuna import Optunizer
 from ezdl.utils.utilities import nested_dict_update, update_collection
 from ezdl.logger.text_logger import get_logger
 
@@ -49,6 +51,9 @@ class ExpSettings(EasyDict):
         self.group = ""
         self.continue_with_errors = True
         self.logger = None
+        self.search = "grid"
+        self.direction = None
+        self.n_trials = None
         super().__init__(*args, **kwargs)
         self.tracking_dir = self.tracking_dir or ""
 
@@ -64,6 +69,9 @@ class ExpSettings(EasyDict):
         self.group = e.group or self.group
         self.logger = e.logger or self.logger
         self.continue_with_errors = not e.continue_with_errors or self.continue_with_errors
+        self.search = e.search or self.search
+        self.direction = e.direction or self.direction
+        self.n_trials = e.n_trials or self.n_trials
 
 
 class Status:
@@ -129,13 +137,32 @@ class Experimenter:
         base_grid = settings['parameters']
         other_grids = settings['other_grids']
         self.exp_settings = ExpSettings(settings['experiment'])
+        if track_dir := self.exp_settings['tracking_dir']:
+            os.makedirs(track_dir, exist_ok=True)
 
         print('\n' + '='*100)
         complete_grids = [base_grid]
         if other_grids:
             complete_grids += \
-                [nested_dict_update(copy.deepcopy(base_grid), other_run) for other_run in other_grids]
+                    [nested_dict_update(copy.deepcopy(base_grid), other_run) for other_run in other_grids]
         logger.info(f'There are {len(complete_grids)} grids')
+
+        if self.exp_settings.search == "grid":
+            return self.generate_grid_search(complete_grids, other_grids)
+        elif self.exp_settings.search == "optim":
+            return self.generate_optim_search(complete_grids)
+        else:
+            raise ValueError(f"Unknown search type: {self.exp_settings.search}")
+        
+    def generate_optim_search(self, complete_grids):
+        study_names = [f"{self.exp_settings.name}_{self.exp_settings.group}_{i}" for i in range(len(complete_grids))]
+        self.grids = [Optunizer(study_name=name, grid=grid, storage_base=self.exp_settings.tracking_dir,
+                                n_trials=self.exp_settings.n_trials,
+                                direction=self.exp_settings.direction) 
+                           for name, grid in zip(study_names, complete_grids)]
+        self.generate_grid_summary()
+        
+    def generate_grid_search(self, complete_grids, other_grids):
 
         self.grids, dot_elements = zip(*[make_grid(grid, return_cartesian_elements=True) for grid in complete_grids])
         # WARNING: Grids' objects have the same IDs!
@@ -154,11 +181,6 @@ class Experimenter:
                 info += f', skipping grid {i} with {len(grid)} runs'
             logger.info(info)
         self.generate_grid_summary()
-
-        # logger.info(f'Total runs found:              {self.gs.total_runs}')
-        # logger.info(f'Total runs excluded by grids:  {self.gs.total_runs_excl_grid}')
-        # logger.info(f'Total runs excluded:           {self.gs.total_runs_excl}')
-        # logger.info(f'Total runs to run:             {self.gs.total_runs_to_run}')
 
         if self.exp_settings.excluded_files:
             os.environ['WANDB_IGNORE_GLOBS'] = self.exp_settings.excluded_files
@@ -187,69 +209,77 @@ class Experimenter:
         )
 
     def execute_runs_generator(self):
-        track_dir = self.exp_settings['tracking_dir']
-        if track_dir:
-            os.makedirs(track_dir, exist_ok=True)
-        exp_log = ExpLog(track_dir, self.exp_settings.name, self.exp_settings.group)
-        starting_run = self.exp_settings.start_from_run
-        status_manager = StatusManager(len(self.grids))
-        if self.exp_settings.resume_last:
-            logger.info("+ another run to finish!")
-            grid_list = [(i, j) for i in range(len(self.grids)) for j in range(len(self.grids[i]))]
-            if self.exp_settings.start_from_grid is None:
-                grid_len = len(self.grids[-1])
-                sg, sr = grid_list[-1]
-            else:
-                grid_len = len(self.grids[self.exp_settings.start_from_grid])
-                index = grid_list.index((self.exp_settings.start_from_grid, self.exp_settings.start_from_run))
-                sg, sr = grid_list[index - 1]
-            try:
-                exp_log.insert_run(sg, sr)
-                run = get_interrupted_run(self.exp_settings)
-                yield status_manager.new_run(sg, sr, run.params, grid_len, run.seg_trainer.sg_logger.name, run.seg_trainer.sg_logger.url)
-                logger.info(f'Running grid {sg} out of {len(self.grids) - 1}')
-                logger.info(
-                    f'Running run {sr - 1} out of {grid_len} ({sum(len(self.grids[k]) for k in range(sg)) + sr} / {self.gs.total_runs - 1})'
-                )
-                run.launch()
-                print(self.EXP_FINISH_SEP)
-                exp_log.finish_run(sg, sr)
-                yield status_manager.finish_run()
-            except Exception as ex:
-                logger.error(f'Experiment {sg} failed with error {ex}')
-                print(self.EXP_CRASHED_SEP)
-                exp_log.finish_run(sg, sr, crashed=True)
-                if not self.exp_settings.continue_with_errors:
-                    raise ex
-                yield status_manager.crash_run(ex)
-        for i in range(self.exp_settings.start_from_grid, len(self.grids)):
-            grid = self.grids[i]
-            if i != self.exp_settings.start_from_grid:
-                starting_run = 0
-            for j in range(starting_run, len(grid)):
-                params = grid[j]
+        try:
+            exp_log = ExpLog(self.exp_settings['tracking_dir'], self.exp_settings.name, self.exp_settings.group)
+            starting_run = self.exp_settings.start_from_run
+            status_manager = StatusManager(len(self.grids))
+            if self.exp_settings.resume_last and self.exp_settings.search == "grid":
+                logger.info("+ another run to finish!")
+                grid_list = [(i, j) for i in range(len(self.grids)) for j in range(len(self.grids[i]))]
+                if self.exp_settings.start_from_grid is None:
+                    grid_len = len(self.grids[-1])
+                    sg, sr = grid_list[-1]
+                else:
+                    grid_len = len(self.grids[self.exp_settings.start_from_grid])
+                    index = grid_list.index((self.exp_settings.start_from_grid, self.exp_settings.start_from_run))
+                    sg, sr = grid_list[index - 1]
                 try:
-                    exp_log.insert_run(i, j)
-                    yield status_manager.new_run(i, j, params, len(grid))
-                    logger.info(f'Running grid {i} out of {len(self.grids) - 1}')
+                    exp_log.insert_run(sg, sr)
+                    run = get_interrupted_run(self.exp_settings)
+                    yield status_manager.new_run(sg, sr, run.params, grid_len, run.seg_trainer.sg_logger.name, run.seg_trainer.sg_logger.url)
+                    logger.info(f'Running grid {sg} out of {len(self.grids) - 1}')
                     logger.info(
-                        f'Running run {j} out of {len(grid) - 1} ({sum(len(self.grids[k]) for k in range(i)) + j} / {self.gs.total_runs - 1})'
+                        f'Running run {sr - 1} out of {grid_len} ({sum(len(self.grids[k]) for k in range(sg)) + sr} / {self.gs.total_runs - 1})'
                     )
-                    run = Run()
-                    run.init({'experiment': {**self.exp_settings}, **params})
-                    yield status_manager.update_run(run.seg_trainer.sg_logger.name, run.seg_trainer.sg_logger.url)
                     run.launch()
                     print(self.EXP_FINISH_SEP)
-                    exp_log.finish_run(i, j)
-                    gc.collect()
+                    exp_log.finish_run(sg, sr)
                     yield status_manager.finish_run()
                 except Exception as ex:
-                    logger.error(f'Experiment {i} failed with error {ex}')
+                    logger.error(f'Experiment {sg} failed with error {ex}')
                     print(self.EXP_CRASHED_SEP)
-                    exp_log.finish_run(i, j, crashed=True)
+                    exp_log.finish_run(sg, sr, crashed=True)
                     if not self.exp_settings.continue_with_errors:
                         raise ex
                     yield status_manager.crash_run(ex)
+            for i in range(self.exp_settings.start_from_grid, len(self.grids)):
+                grid = self.grids[i]
+                if i != self.exp_settings.start_from_grid:
+                    starting_run = 0
+                for j in range(starting_run, len(grid)):
+                    params = grid[j]
+                    try:
+                        exp_log.insert_run(i, j)
+                        yield status_manager.new_run(i, j, params, len(grid))
+                        logger.info(f'Running grid {i} out of {len(self.grids) - 1}')
+                        logger.info(
+                            f'Running run {j} out of {len(grid) - 1} ({sum(len(self.grids[k]) for k in range(i)) + j} / {self.gs.total_runs - 1})'
+                        )
+                        run = Run()
+                        run.init({'experiment': {**self.exp_settings}, **params})
+                        yield status_manager.update_run(run.seg_trainer.sg_logger.name, run.seg_trainer.sg_logger.url)
+                        metric = run.launch()
+                        print(self.EXP_FINISH_SEP)
+                        exp_log.finish_run(i, j)
+                        if self.exp_settings.search == "optim":
+                            self.grids[i].report_result(metric)
+                        gc.collect()
+                        yield status_manager.finish_run()
+                    except Exception as ex:
+                        logger.error(f'Experiment {i} failed with error {ex}')
+                        print(self.EXP_CRASHED_SEP)
+                        exp_log.finish_run(i, j, crashed=True)
+                        if not self.exp_settings.continue_with_errors:
+                            raise ex
+                        yield status_manager.crash_run(ex)
+        finally:
+            self._upload_optuna_results()
+            
+    def _upload_optuna_results(self):
+        if os.path.exists(self.exp_settings.tracking_dir) and self.exp_settings.logger == 'clearml':
+            databases = glob.glob(os.path.join(self.exp_settings.tracking_dir,"*.db"))
+            from ezdl.logger.clearml_logger import upload_to_clearml
+            upload_to_clearml("optuna_dbs", "optuna_dbs", databases)
 
     def execute_runs(self):
         for _ in self.execute_runs_generator():
@@ -277,8 +307,7 @@ def experiment(settings: Mapping, param_path: str = "local variable"):
     logger.info(f'Loaded parameters from {param_path}')
 
     experimenter = Experimenter()
-    grid_summary, grids, cartesian_elements = experimenter.calculate_runs(settings)
-
+    experimenter.calculate_runs(settings)
     experimenter.execute_runs()
 
 
