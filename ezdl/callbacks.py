@@ -36,7 +36,9 @@ def callback_factory(name, params, **kwargs):
             if params['phase'] == 'validation' \
             else Phase.TEST_BATCH_END
         if params['phase'] == Phase.TEST_BATCH_END:
-            params['batch_idxs'] = range(len(loader)) 
+            params['batch_idxs'] = range(len(loader))
+        if hasattr(dataset, 'cmap'):
+            params['cmap'] = dataset.cmap
         return SegmentationVisualizationCallback(logger=seg_trainer.sg_logger,
                                                  last_img_idx_in_batch=4,
                                                  num_classes=dataset.trainset.CLASS_LABELS,
@@ -58,7 +60,7 @@ class SegmentationVisualizationCallback(PhaseCallback):
     """
 
     def __init__(self, logger, phase: Phase, freq: int, num_classes, batch_idxs=None, last_img_idx_in_batch: int = None,
-                 undo_preprocessing=None, use_plotly=False, metrics=False):
+                 undo_preprocessing=None, use_plotly=False, metrics=False, cmap=None):
         super(SegmentationVisualizationCallback, self).__init__(phase)
         if batch_idxs is None:
             batch_idxs = [0]
@@ -67,6 +69,7 @@ class SegmentationVisualizationCallback(PhaseCallback):
         self.batch_idxs = batch_idxs
         self.last_img_idx_in_batch = last_img_idx_in_batch
         self.undo_preprocesing = undo_preprocessing
+        self.cmap = cmap
         self.use_plotly = use_plotly
         self.metrics = metrics
         self.prefix = 'train' if phase == Phase.TRAIN_EPOCH_END else 'val' \
@@ -98,7 +101,8 @@ class SegmentationVisualizationCallback(PhaseCallback):
                                                       prefix=self.prefix,
                                                       names=context.input_name,
                                                       iteration=context.epoch,
-                                                      use_plotly=self.use_plotly)
+                                                      use_plotly=self.use_plotly,
+                                                      cmap=self.cmap)
             if self.prefix == 'test' and context.batch_idx == self.batch_idxs[-1] and not self.use_plotly:
                 context.sg_logger.add_image_mask_sequence(f'{self.prefix}_seg')
 
@@ -106,7 +110,7 @@ class SegmentationVisualizationCallback(PhaseCallback):
 class SegmentationVisualization:
 
     @staticmethod
-    def _visualize_image(image_np: np.ndarray, pred_mask: torch.Tensor, target_mask: torch.Tensor, classes):
+    def _visualize_image(image_np: np.ndarray, pred_mask: torch.Tensor, target_mask: torch.Tensor, classes, cmap=None):
         """
 
         :param image_np: numpy image
@@ -131,10 +135,12 @@ class SegmentationVisualization:
             "predictions": {
                 "mask_data": pred_mask.numpy(),
                 "class_labels": classes,
+                "cmap": cmap,
             },
             "ground_truth": {
                 "mask_data": target_mask.numpy(),
                 "class_labels": classes,
+                "cmap": cmap,
             },
         }
 
@@ -146,7 +152,8 @@ class SegmentationVisualization:
                         use_plotly: bool = False,
                         prefix: str = '',
                         names: List[str] = None,
-                        iteration: int = 0):
+                        iteration: int = 0,
+                        cmap=None):
         """
         A helper function to visualize detections predicted by a network:
         saves images into a given path with a name that is {batch_name}_{imade_idx_in_the_batch}.jpg, one batch per call.
@@ -178,13 +185,13 @@ class SegmentationVisualization:
             targets = target_mask[i].detach().cpu().numpy()
 
             if use_plotly:
-                fig = SegmentationVisualization.visualize_with_plotly(image_np[i], preds, targets, num_classes)
+                fig = SegmentationVisualization.visualize_with_plotly(image_np[i], preds, targets, num_classes, cmap)
                 if prefix == 'val':
                     logger.add_plotly_figure(names[i], fig, global_step=iteration)
                 else:
                     logger.add_plotly_figure(names[i], fig)
             else:
-                img, mask_dict = SegmentationVisualization._visualize_image(image_np[i], preds, targets, num_classes)
+                img, mask_dict = SegmentationVisualization._visualize_image(image_np[i], preds, targets, num_classes, cmap)
                 if prefix == 'val':
                     logger.add_mask(names[i], img, mask_dict, global_step=iteration)
                 else:

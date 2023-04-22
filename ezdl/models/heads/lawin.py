@@ -152,17 +152,33 @@ class LawinHead(nn.Module):
     
     def get_lawin_att_feats(self, x: Tensor, patch_size: int, ratios: list, step: str = "") -> list:
         _, _, H, W = x.shape
+        rem_h = (H % patch_size)
+        rem_w = (W % patch_size)
+        pad_h = patch_size - rem_h if rem_h > 0 else 0
+        pad_w = patch_size - rem_w if rem_w > 0 else 0
+        ori_h, ori_w = H, W
+        H, W = H + pad_h, W + pad_w
+
+        if pad_h > 0 or pad_w > 0:
+            x = F.pad(x, (0, pad_w, 0, pad_h), mode='constant', value=0)
         query = F.unfold(x, patch_size, stride=patch_size)
         query = rearrange(query, 'b (c ph pw) (nh nw) -> (b nh nw) c ph pw', ph=patch_size, pw=patch_size, nh=H//patch_size, nw=W//patch_size)
         outs = []
 
         for r in ratios:
+            # pad the context tensor
+            crem_h = (H - patch_size * r) % patch_size
+            crem_w = (W - patch_size * r) % patch_size
+            cpad_h = patch_size - crem_h if crem_h > 0 else 0
+            cpad_w = patch_size - crem_w if crem_w > 0 else 0
+
+            context = F.pad(x, (0, cpad_w, 0, cpad_h), mode='constant', value=0)
             context = F.unfold(x, patch_size*r, stride=patch_size, padding=int((r-1)/2*patch_size))
             context = rearrange(context, "b (c ph pw) (nh nw) -> (b nh nw) c ph pw", ph=patch_size*r, pw=patch_size*r, nh=H//patch_size, nw=W//patch_size)
             context = getattr(self, f"ds_{step}{r}")(context)
             output = getattr(self, f"lawin_{step}{r}")(query, context)
             output = rearrange(output, "(b nh nw) c ph pw -> b c (nh ph) (nw pw)", ph=patch_size, pw=patch_size, nh=H//patch_size, nw=W//patch_size)
-            outs.append(output)
+            outs.append(output[:, :, :ori_h, :ori_w])
         return outs
 
     def forward(self, features):

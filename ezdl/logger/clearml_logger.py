@@ -194,11 +194,17 @@ class ClearMLLogger(BaseSGLogger):
 
     @multi_process_safe
     def add_mask(self, tag: str, image, mask_dict, global_step: int = 0):
+        cmap = mask_dict['predictions']['cmap']
+        labels = mask_dict['ground_truth']['class_labels']
         predictions = tensor_to_segmentation_image(mask_dict['predictions']['mask_data'],
-                                                   labels=mask_dict['predictions']['class_labels'])
-        ground_truth, cmap = tensor_to_segmentation_image(mask_dict['ground_truth']['mask_data'],
-                                                    labels=mask_dict['ground_truth']['class_labels'], return_cmap=True)
-        cmap = {name: '#%02x%02x%02x' % (c[0], c[1], c[2]) for name, c in cmap.items()}
+                                                    labels=mask_dict['predictions']['class_labels'], cmap=cmap)
+        if cmap:
+            ground_truth = tensor_to_segmentation_image(mask_dict['ground_truth']['mask_data'],
+                                                        labels=mask_dict['ground_truth']['class_labels'], cmap=cmap)
+        else:
+            ground_truth, cmap = tensor_to_segmentation_image(mask_dict['ground_truth']['mask_data'],
+                                                        labels=mask_dict['ground_truth']['class_labels'], return_cmap=True)
+        cmap = {labels[i]: '#%02x%02x%02x' % (cmap[i][0], cmap[i][1], cmap[i][2]) for i in range(len(labels))}
         data = np.stack([image, predictions, ground_truth])
         fig = px.imshow(data, facet_col=0, title=tag)
         annotations = ["image", "predictions", "ground_truth"]
