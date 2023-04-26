@@ -31,7 +31,7 @@ class Optunizer:
         self.trial = self.study.ask()
         parameters = dict(self.parameters)
         for key, value in self.hyperparameters:
-            name = key if isinstance(key, str) else ".".join(key)
+            name = key if isinstance(key, str) else ".".join(flat_tuple(key))
             parameters[key] = self._suggest(name, value)
             
         return delinearize(parameters)
@@ -54,3 +54,12 @@ class Optunizer:
         elif isinstance(first_value, str):
             return self.trial.suggest_categorical(key, choices=values)
         
+        
+def flat_tuple(t):
+    if isinstance(t, tuple):
+        if len(t) == 0:
+            return ()
+        return (t[0],) + flat_tuple(t[1])
+    else:
+        return (t,)
+    

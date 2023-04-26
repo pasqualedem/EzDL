@@ -155,7 +155,8 @@ class Experimenter:
             raise ValueError(f"Unknown search type: {self.exp_settings.search}")
         
     def generate_optim_search(self, complete_grids):
-        study_names = [f"{self.exp_settings.name}_{self.exp_settings.group}_{i}" for i in range(len(complete_grids))]
+        fname = f"{self.exp_settings.name}_{self.exp_settings.group.replace('/', '_')}"
+        study_names = [f"{fname}_{i}" for i in range(len(complete_grids))]
         self.grids = [Optunizer(study_name=name, grid=grid, storage_base=self.exp_settings.tracking_dir,
                                 n_trials=self.exp_settings.n_trials,
                                 direction=self.exp_settings.direction) 
