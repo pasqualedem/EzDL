@@ -204,7 +204,7 @@ class ClearMLLogger(BaseSGLogger):
         else:
             ground_truth, cmap = tensor_to_segmentation_image(mask_dict['ground_truth']['mask_data'],
                                                         labels=mask_dict['ground_truth']['class_labels'], return_cmap=True)
-        cmap = {labels[i]: '#%02x%02x%02x' % (cmap[i][0], cmap[i][1], cmap[i][2]) for i in range(len(labels))}
+        cmap = {labels[i]: '#%02x%02x%02x' % (cmap[labels[i]][0], cmap[labels[i]][1], cmap[labels[i]][2]) for i in range(len(labels))}
         data = np.stack([image, predictions, ground_truth])
         fig = px.imshow(data, facet_col=0, title=tag)
         annotations = ["image", "predictions", "ground_truth"]
