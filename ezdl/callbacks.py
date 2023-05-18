@@ -185,7 +185,7 @@ class SegmentationVisualization:
             targets = target_mask[i].detach().cpu().numpy()
 
             if use_plotly:
-                fig = SegmentationVisualization.visualize_with_plotly(image_np[i], preds, targets, num_classes, cmap)
+                fig = SegmentationVisualization.visualize_with_plotly(image_np[i], preds, targets, num_classes)
                 if prefix == 'val':
                     logger.add_plotly_figure(names[i], fig, global_step=iteration)
                 else:
