@@ -7,7 +7,7 @@ from ezdl.models.layers import DropPath, ConvModule, MultiDropPath
 from transformers import SegformerModel, SegformerConfig
 
 
-CHANNEL_PRETRAIN = {'R': 0, 'G': 1, 'B': 2}
+CHANNEL_PRETRAIN = {'R': 0, 'G': 1, 'B': 2, 'NIR': 3, 'RE': 4}
 
 
 class Attention(nn.Module):
@@ -155,18 +155,20 @@ class MiT(nn.Module):
             self.partial_forward = self.hug_partial_forward
             self.n_blocks = n_blocks
 
-    def init_pretrained_weights(self, channel_to_load=None):
-        if channel_to_load is None:
-            channel_to_load = slice(self.config.num_channels)
+    def init_pretrained_weights(self, weights=None, channels_to_load=None):
+        if channels_to_load is None:
+            channels_to_load = slice(self.config.num_channels)
         else:
-            channel_to_load = [CHANNEL_PRETRAIN[x] for x in channel_to_load]
+            channels_to_load = [CHANNEL_PRETRAIN[x] for x in channels_to_load]
 
-        weights = SegformerModel.from_pretrained(self.url).state_dict()
+        weights = SegformerModel.from_pretrained(self.url).state_dict() if weights is None else weights
+        if list(weights.keys())[0][:len("encoder.encoder")] == "encoder.encoder": # Remove extra encoder.
+            weights = {k[len("encoder."):]: v for k, v in weights.items()}
         keys = weights.keys()
         fkeys = [k for k in keys if int(k.split('.')[2]) < self.n_blocks]
         weights = {k: weights[k] for k in fkeys}
         weights['encoder.patch_embeddings.0.proj.weight'] = \
-            weights['encoder.patch_embeddings.0.proj.weight'][:, channel_to_load]
+            weights['encoder.patch_embeddings.0.proj.weight'][:, channels_to_load]
         self.encoder.load_state_dict(weights)
 
     def hug_forward(self, x):

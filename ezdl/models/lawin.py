@@ -29,14 +29,15 @@ class BaseLawin(BaseModel):
         super().__init__(backbone, input_channels, backbone_pretrained)
         self.decode_head = lawin_class(self.backbone.channels, mit_settings[backbone[4:]][0][3], num_classes)
         self.apply(self._init_weights)
-        if backbone_pretrained:
+        if backbone_pretrained and not arch_params.get('pretrained'):
             self.main_pretrained = pretrained_channels
             if isinstance(pretrained_channels, str):
                 self.main_pretrained = [pretrained_channels] * input_channels
             else:
                 self.main_pretrained = pretrained_channels
-            self.backbone.init_pretrained_weights(self.main_pretrained)
+            self.backbone.init_pretrained_weights(channels_to_load=self.main_pretrained)
         if arch_params.get('pretrained'):
+            self.main_pretrained = pretrained_channels
             self.init_pretrained_weights(arch_params['pretrained'])
 
     def init_pretrained_weights(self, pretrained):
@@ -45,10 +46,22 @@ class BaseLawin(BaseModel):
             from ezdl.logger.clearml_logger import load_weight_from_clearml
             pretrained_run = pretrained['run']
             weights = load_weight_from_clearml(pretrained_run)
+        elif pretrained_mode == "file":
+            weights = torch.load(pretrained['file'])
         else:
-            raise NotImplementedError("Only clearml mode is supported for pretrained weights")
+            raise NotImplementedError("Only clearml and local file mode are supported for pretrained weights")
         weights = load_checkpoint_module_fix(weights)
-        self.load_state_dict(weights)
+        if pretrained.get("remove_head"):
+            weights.pop("decode_head.linear_pred.weight")
+            weights.pop("decode_head.linear_pred.bias")
+        if self.main_pretrained is not None:
+            backbone_weights = {k[len("backbone."):]: v for k, v in weights.items() if k.split(".")[0] == "backbone"}
+            head_weights = {k[len("decode_head."):]: v for k, v in weights.items() if k.split(".")[0] == "decode_head"}
+            self.backbone.init_pretrained_weights(channels_to_load=self.main_pretrained, weights=backbone_weights)
+            result = self.decode_head.load_state_dict(head_weights, strict=False)
+            assert result.missing_keys == ['linear_pred.weight', 'linear_pred.bias'] and result.unexpected_keys == [], f"Unmatched Keys : {result}"
+        else:
+            self.load_state_dict(weights)
         logger.info(f"Loaded pretrained weights from {pretrained}")
 
 

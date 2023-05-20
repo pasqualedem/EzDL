@@ -273,3 +273,28 @@ def load_checkpoint_module_fix(state_dict):
     def remove_starts_with_module(x):
         return remove_starts_with_module(x[7:]) if x.startswith('module.') else x
     return {remove_starts_with_module(k): v for k, v in state_dict.items()}
+
+
+def resolve_param_groups(param_groups, params, init_lr):
+    recursive_dict = {'modules': param_groups, 'lr': init_lr}
+    return recursive_resolve_param_groups("", recursive_dict, list(params))
+    
+def get_named_params(name, params):
+    name_params =  list(filter(lambda x: x[0].startswith(name), list(params)))
+    remaining_params =  list(filter(lambda x: not x[0].startswith(name), list(params)))
+    return name_params, remaining_params
+    
+def recursive_resolve_param_groups(module_name, param_groups, params):
+    if "modules" not in param_groups:
+        return [{'named_params': params, 'lr': param_groups['lr']}]
+    groups = []
+    modules = param_groups['modules']
+    for module in modules:
+        submodule_name = f"{module_name}.{module}" if module_name != "" else module
+        module_params, params = get_named_params(submodule_name, params)
+        sub_groups = recursive_resolve_param_groups(submodule_name, modules[module], module_params)
+        groups.extend(sub_groups)
+    if len(params) > 0:
+        groups.append({'named_params': params, 'lr': param_groups['lr']})
+    return groups
+    
