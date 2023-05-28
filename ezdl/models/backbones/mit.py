@@ -1,4 +1,5 @@
 from typing import Tuple, List, Any, Tuple
+from einops import rearrange
 
 import torch
 from torch import nn, Tensor
@@ -220,14 +221,25 @@ class MiT(nn.Module):
 class FusionBlock(nn.Module):
     def __init__(self, channels, fusion_type="conv_sum", p_local=0.1, p_glob=0.5):
         super().__init__()
-        self.conv1 = ConvModule(channels, channels, k=1, p=0)
-        self.conv2 = ConvModule(channels, channels, k=1, p=0)
-        if fusion_type == "conv_sum_drop":
-            self.multi_drop = MultiDropPath(num_inputs=2, p=p_glob)
-            self.drop = DropPath(p_local)
-            self.forward = self.drop_forward
-        else:
-            self.forward = self.base_forward
+        if fusion_type == "squeeze_excite":
+            self.conv = ConvModule(channels * 2, channels, k=1, p=0)
+            self.squeeze = nn.AdaptiveAvgPool2d(1)
+            self.excite = nn.Sequential(
+                nn.Linear(channels * 2, channels // 4),
+                nn.ReLU(inplace=True),
+                nn.Linear(channels // 4, channels * 2),
+                nn.Sigmoid()
+            )
+            self.forward = self.squeeze_forward
+        elif fusion_type == "conv_sum_drop" or fusion_type == "conv_sum":
+            self.conv1 = ConvModule(channels, channels, k=1, p=0)
+            self.conv2 = ConvModule(channels, channels, k=1, p=0)
+            if fusion_type == "conv_sum_drop":
+                self.multi_drop = MultiDropPath(num_inputs=2, p=p_glob)
+                self.drop = DropPath(p_local)
+                self.forward = self.drop_forward
+            else:
+                self.forward = self.base_forward
 
     def base_forward(self, x1, x2):
         return self.conv1(x1) + self.conv2(x2)
@@ -236,6 +248,15 @@ class FusionBlock(nn.Module):
         y1 = x1 + self.drop(self.conv1(x1))
         y2 = x2 + self.drop(self.conv2(x2))
         return sum(self.multi_drop([y1, y2]))
+    
+    def squeeze_forward(self, x1, x2):
+        x = torch.cat([x1, x2], dim=1)
+        gap = self.squeeze(x)
+        gap = rearrange(gap, 'b c h w -> b (h w c)')
+        gap = self.excite(gap)
+        gap = rearrange(gap, 'b (h w c) -> b c h w', h=1, w=1)
+        x = x * gap + x
+        return self.conv(x)
 
 
 class MiTFusion(nn.Module):

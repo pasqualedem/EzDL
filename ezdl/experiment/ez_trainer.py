@@ -1879,7 +1879,7 @@ class EzTrainer:
             # OVERRIDE SOME PARAMETERS TO MAKE SURE THEY MATCH THE TRAINING PARAMETERS
             general_sg_logger_params = {  # 'experiment_name': self.experiment_name,
                 'experiment_name': '',
-                'project': self.project_name,
+                'project_name': self.project_name,
                 'group': self.group_name,
                 'storage_location': self.model_checkpoints_location,
                 'resumed': self.load_checkpoint,

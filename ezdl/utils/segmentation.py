@@ -13,7 +13,7 @@ class ColorMap:
         return self.cmap[item]
 
 
-def tensor_to_segmentation_image(prediction, cmap: list = None, labels=None, return_cmap=False) -> np.array:
+def tensor_to_segmentation_image(prediction, cmap: list = None, labels=None, return_clmap=False) -> np.array:
     if cmap is None:
         cmap = ColorMap()
     if labels is None:
@@ -21,7 +21,7 @@ def tensor_to_segmentation_image(prediction, cmap: list = None, labels=None, ret
     segmented_image = np.ones((*prediction.shape, 3), dtype="uint8")
     for i in range(len(labels)):
         segmented_image[prediction == i] = cmap[i]
-    if return_cmap:
+    if return_clmap:
         cmap = {labels[i]: cmap[i] for i in range(len(labels))}
         return segmented_image, cmap
     return segmented_image

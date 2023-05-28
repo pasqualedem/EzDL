@@ -141,7 +141,7 @@ class Run:
         self.seg_trainer.sg_logger.add_summary({"emissions": self.carbon_tracker.final_emissions})
         emissions_data = self.carbon_tracker.final_emissions_data.values
         emissions_data_values = [[v for k, v in emissions_data.items()]]
-        self.seg_trainer.sg_logger.add_table("emissions", emissions_data_values, emissions_data.keys(), [0])
+        self.seg_trainer.sg_logger.add_table("emissions", emissions_data_values, list(emissions_data.keys()), [0])
 
     @property
     def name(self):

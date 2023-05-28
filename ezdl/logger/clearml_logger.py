@@ -26,7 +26,7 @@ WANDB_INCLUDE_FILE_NAME = '.wandbinclude'
 
 class ClearMLLogger(BaseSGLogger):
 
-    def __init__(self, project: str, experiment_name: str, storage_location: str, resumed: bool,
+    def __init__(self, project_name: str, experiment_name: str, storage_location: str, resumed: bool,
                  training_params: dict, checkpoints_dir_path: str, tb_files_user_prompt: bool = False,
                  launch_tensorboard: bool = False, tensorboard_port: int = None, save_checkpoints_remote: bool = True,
                  save_tensorboard_remote: bool = True, run: Task = None, entity: Optional[str] = None,
@@ -50,7 +50,7 @@ class ClearMLLogger(BaseSGLogger):
         self.resumed = resumed
         resume = 'must' if resumed else None
         if kwargs.get("group"):
-            project = f"{project}/{kwargs.get('group')}"
+            project_name = f"{project_name}/{kwargs.get('group')}"
         if not experiment_name:
             experiment_name = check_output(["adjectiveanimalnumber"]).decode().rstrip("\n").rstrip("\r")
 
@@ -58,7 +58,7 @@ class ClearMLLogger(BaseSGLogger):
             self.run = run.clearml_task
             experiment_name = run.clearml_task.name
         else:
-            self.run = Task.init(project_name=project,
+            self.run = Task.init(project_name=project_name,
                                 task_name=experiment_name,
                                 auto_connect_frameworks=False,
                                 continue_last_task=resume,
@@ -71,7 +71,7 @@ class ClearMLLogger(BaseSGLogger):
         
         self.save_checkpoints_wandb = save_checkpoints_remote
         self.save_tensorboard_wandb = save_tensorboard_remote
-        super().__init__(project, experiment_name, storage_location, resumed, training_params,
+        super().__init__(project_name, experiment_name, storage_location, resumed, training_params,
                          checkpoints_dir_path, tb_files_user_prompt, launch_tensorboard, tensorboard_port,
                          self.s3_location_available, self.s3_location_available, self.s3_location_available)
 
@@ -198,13 +198,10 @@ class ClearMLLogger(BaseSGLogger):
         labels = mask_dict['ground_truth']['class_labels']
         predictions = tensor_to_segmentation_image(mask_dict['predictions']['mask_data'],
                                                     labels=mask_dict['predictions']['class_labels'], cmap=cmap)
-        if cmap:
-            ground_truth = tensor_to_segmentation_image(mask_dict['ground_truth']['mask_data'],
-                                                        labels=mask_dict['ground_truth']['class_labels'], cmap=cmap)
-        else:
-            ground_truth, cmap = tensor_to_segmentation_image(mask_dict['ground_truth']['mask_data'],
-                                                        labels=mask_dict['ground_truth']['class_labels'], return_cmap=True)
-        cmap = {labels[i]: '#%02x%02x%02x' % (cmap[labels[i]][0], cmap[labels[i]][1], cmap[labels[i]][2]) for i in range(len(labels))}
+
+        ground_truth, clmap = tensor_to_segmentation_image(mask_dict['ground_truth']['mask_data'], cmap=cmap,
+                                                    labels=mask_dict['ground_truth']['class_labels'], return_clmap=True)
+        clmap = {labels[i]: '#%02x%02x%02x' % (clmap[labels[i]][0], clmap[labels[i]][1], clmap[labels[i]][2]) for i in range(len(labels))}
         data = np.stack([image, predictions, ground_truth])
         fig = px.imshow(data, facet_col=0, title=tag)
         annotations = ["image", "predictions", "ground_truth"]
@@ -212,7 +209,7 @@ class ClearMLLogger(BaseSGLogger):
             fig.layout.annotations[k].update(text=annotations[k])
         fig.add_traces([
             go.Scatter(x=[None], y=[None], name=name, mode='markers', marker=dict(color=color, size=1))
-            for name, color in cmap.items()
+            for name, color in clmap.items()
         ])
         self.run.get_logger().report_plotly(
             title=tag, series=tag, iteration=global_step, figure=fig

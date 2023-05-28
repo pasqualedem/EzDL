@@ -48,7 +48,7 @@ class WandBSGLogger(BaseSGLogger):
         os.makedirs(checkpoints_dir_path, exist_ok=True)
         self.run = wandb.init(project=project_name, name=experiment_name,
                          entity=entity, resume=resume, id=run_id, tags=tags,
-                         dir=checkpoints_dir_path, **kwargs)
+                         dir=checkpoints_dir_path, group=kwargs.get('group'))
         if save_code:
             self._save_code()
 
