@@ -103,7 +103,7 @@ class SegmentationVisualizationCallback(PhaseCallback):
                                                       iteration=context.epoch,
                                                       use_plotly=self.use_plotly,
                                                       cmap=self.cmap)
-            if context.batch_idx == self.batch_idxs[-1] and not self.use_plotly:
+            if self.prefix == 'test' and context.batch_idx == self.batch_idxs[-1] and not self.use_plotly:
                 context.sg_logger.add_image_mask_sequence(f'{self.prefix}_seg')
 
 
