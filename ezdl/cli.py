@@ -49,6 +49,20 @@ def experiment(resume, file, dir, grid, run):
     settings['experiment'] = update_collection(settings['experiment'], run, key='start_from_run')
     settings['experiment'] = update_collection(settings['experiment'], dir, key='tracking_dir')
     experiment(settings)
+    
+    
+@main.command("logged")
+@exp_options
+def experiment(resume, file, dir, grid, run):
+    from ezdl.app.logged_experiment import logged_experiment
+    param_path = file or 'parameters.yaml'
+    settings = load_yaml(param_path)
+    settings['experiment'] = update_collection(settings['experiment'], resume, key='resume')
+    settings['experiment'] = update_collection(settings['experiment'], grid, key='start_from_grid')
+    settings['experiment'] = update_collection(settings['experiment'], run, key='start_from_run')
+    settings['experiment'] = update_collection(settings['experiment'], dir, key='tracking_dir')
+    logged_experiment(settings)
+
 
 
 @main.command("resume_run")
@@ -93,6 +107,12 @@ def app(resume, file, dir, grid, run):
         run=run
     )
     frontend(args)
+    
+    
+@main.command("dash")
+def dash():
+    from ezdl.app.dash import dashboard
+    dashboard()
     
     
 @main.command("server")

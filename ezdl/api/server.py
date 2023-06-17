@@ -12,20 +12,18 @@ EXPERIMENTS = {}
 
 
 @app.post("/add_experiment")
-async def add_experiment(id: str, experimenter: Experimenter):
+def add_experiment(id: str, experimenter: Experimenter):
     """
     Add an experiment
     """
-    global EXPERIMENTS
     EXPERIMENTS[id] = (experimenter, None)
     
 
 @app.post("/update_experiment")
-async def update_experiment(id: str, status: Status):
+def update_experiment(id: str, status: Status):
     """
     Update an experiment
     """
-    global EXPERIMENTS
     EXPERIMENTS[id] = (EXPERIMENTS[id][0], status)
 
 
@@ -35,4 +33,4 @@ def status():
 
 
 def server():
-    uvicorn.run(app, host="0.0.0.0", port=8502)
+    uvicorn.run(app, host="0.0.0.0", port=8502, log_level="debug")

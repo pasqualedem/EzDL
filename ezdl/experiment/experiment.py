@@ -63,11 +63,10 @@ class ExpSettings(EasyDict):
         self.continue_with_errors = not e.continue_with_errors or self.continue_with_errors
 
 
-class Status(BaseModel):
-    STARTING = "starting"
-    CRASHED = "crashed"
-    FINISHED = "finished"
-    
+STARTING = "starting"
+CRASHED = "crashed"
+FINISHED = "finished"
+class Status(BaseModel):    
     grid: int
     run: int
     params: dict
@@ -115,7 +114,8 @@ class StatusManager:
 class Experimenter(BaseModel):
     gs: GridSummary = None
     exp_settings: ExpSettings = ExpSettings()
-    grids: tuple[list[Mapping]] = None
+    grids: tuple[list[Mapping], ...] = None
+    dot_elements: tuple[list[tuple], ...] = None
     
     EXP_FINISH_SEP = "#"*50 + " FINISHED " + "#"*50 + "\n"
     EXP_CRASHED_SEP = "|\\"*50 + "CRASHED" + "|\\"*50 + "\n"
@@ -136,12 +136,12 @@ class Experimenter(BaseModel):
                 [nested_dict_update(copy.deepcopy(base_grid), other_run) for other_run in other_grids]
         logger.info(f'There are {len(complete_grids)} grids')
 
-        self.grids, dot_elements = zip(*[make_grid(grid, return_cartesian_elements=True) for grid in complete_grids])
+        self.grids, self.dot_elements = zip(*[make_grid(grid, return_cartesian_elements=True) for grid in complete_grids])
         # WARNING: Grids' objects have the same IDs!
-        dot_elements = list(dot_elements)
-        if len(dot_elements) > 1:
-            dot_elements[1:] = [list(dict(linearize(others) + dot).items()) for others, dot in
-                                zip(other_grids, dot_elements[1:])]
+        self.dot_elements = list(self.dot_elements)
+        if len(self.dot_elements) > 1:
+            self.dot_elements[1:] = [list(dict(linearize(others) + dot).items()) for others, dot in
+                                zip(other_grids, self.dot_elements[1:])]
 
         # Modify starting grid and run to manage the resume
         self.manage_resume()
@@ -162,10 +162,10 @@ class Experimenter(BaseModel):
         if self.exp_settings.excluded_files:
             os.environ['WANDB_IGNORE_GLOBS'] = self.exp_settings.excluded_files
             
-        print_preview(self, self.gs, self.grids, dot_elements)
+        print_preview(self, self.gs, self.grids, self.dot_elements)
         print('='*100 + '\n')
         
-        return self.gs, self.grids, dot_elements
+        return self.gs, self.grids, self.dot_elements
 
     def generate_grid_summary(self):
         total_runs = sum(len(grid) for grid in self.grids)
