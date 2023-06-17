@@ -1,0 +1,24 @@
+import requests
+import uuid
+
+from typing import Mapping
+
+from ezdl.experiment.experiment import Experimenter
+from ezdl.logger.text_logger import get_logger
+
+logger = get_logger(__name__)
+
+
+def logged_experiment(settings: Mapping, param_path: str = "local variable"):
+    URL = "http://localhost:8502/"
+    ADD_API = "add_experiment"
+    UPDATE_API = "update_experiment"
+    logger.info(f'Loaded parameters from {param_path}')
+
+    experimenter = Experimenter()
+    grid_summary, grids, cartesian_elements = experimenter.calculate_runs(settings)
+    
+    exp_id = uuid.uuid4()
+    requests.post(f"{URL"/"}", json={"id":  exp_id, "experimenter": experimenter})
+    for _ in experimenter.execute_runs_generator():
+        pass

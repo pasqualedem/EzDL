@@ -8,36 +8,30 @@ from fastapi import FastAPI, BackgroundTasks
 from ezdl.experiment.experiment import Experimenter, Status
 
 app = FastAPI()
-EXPERIMENTER = None
-STATUS = None
+EXPERIMENTS = {}
 
 
-def background_experiment():
-    global STATUS
-    for status in EXPERIMENTER.execute_runs_generator():
-        STATUS = status
-
-@app.post("/experiment")
-async def experiment(experimenter: Experimenter, background_tasks: BackgroundTasks):
+@app.post("/add_experiment")
+async def add_experiment(id: str, experimenter: Experimenter):
     """
-    Run an experiment
+    Add an experiment
     """
-    global EXPERIMENTER
-    global STATUS
-    EXPERIMENTER = experimenter
-    background_tasks.add_task(background_experiment)
-    return {"running": True}
+    global EXPERIMENTS
+    EXPERIMENTS[id] = (experimenter, None)
+    
+
+@app.post("/update_experiment")
+async def update_experiment(id: str, status: Status):
+    """
+    Update an experiment
+    """
+    global EXPERIMENTS
+    EXPERIMENTS[id] = (EXPERIMENTS[id][0], status)
 
 
-@app.get("/status")
-def status() -> Status:
-    print(STATUS)
-    return {"status": STATUS}
-
-
-@app.get("/ok")
-def status() -> Status:
-    return {"ok": 0}
+@app.get("/experiments")
+def status():
+    return {"experiments": EXPERIMENTS}
 
 
 def server():
