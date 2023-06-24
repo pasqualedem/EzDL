@@ -31,7 +31,7 @@ setuptools.setup(
         "matplotlib",
         "numpy==1.23",
         "opencv-python",
-        "onnx==1.12.0"
+        "onnx==1.12.0",
         "plotly",
         "Pillow",
         "pyparsing==2.4.5"
