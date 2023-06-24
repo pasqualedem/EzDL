@@ -72,7 +72,8 @@ class Run:
             self.seg_trainer.init_model(params, False, None)
             self.seg_trainer.init_loggers({"in_params": params}, deepcopy(self.train_params))
             logger.info(f"Input params: \n\n {dict_to_yaml_string(params)}")
-            self.seg_trainer.print_model_summary()
+            if params.get('print_model_summary', True):
+                self.seg_trainer.print_model_summary()
             self._init_carbon_tracker()
         except Exception as e:
             if (
