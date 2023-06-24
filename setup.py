@@ -34,7 +34,7 @@ setuptools.setup(
         "onnx==1.12.0",
         "plotly",
         "Pillow",
-        "pyparsing==2.4.5"
+        "pyparsing==2.4.5",
         "ptflops",
         "ruamel.yaml",
         "scipy",
