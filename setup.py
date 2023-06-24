@@ -29,27 +29,33 @@ setuptools.setup(
         "click",
         "codecarbon",
         "matplotlib",
-        "numpy",
+        "numpy==1.23",
         "opencv-python",
+        "onnx==1.12.0"
         "plotly",
         "Pillow",
+        "pyparsing==2.4.5"
         "ptflops",
         "ruamel.yaml",
         "scipy",
         "super-gradients==3.0.7",
-        "torch",
-        "torchaudio",
-        "torchmetrics",
-        "torchvision",
+        "torch==1.13.1+cu116",
+        "torchvision==0.14.1+cu116",
+        "torchaudio==0.13.1",
+        "torchmetrics==0.8",
         "torchdistill",
         "tqdm",
         "wandb",
         "transformers",
-        "einops",
+        "einops==0.3.2",
+        "scikit-learn",
         "streamlit",
         "streamlit-ace",
         "easydict",
         "clearml",
         "optuna"
+    ],
+    dependency_links=[
+        "https://download.pytorch.org/whl/cu116"
     ]
 )
