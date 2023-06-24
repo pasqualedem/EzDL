@@ -39,9 +39,9 @@ setuptools.setup(
         "ruamel.yaml",
         "scipy",
         "super-gradients==3.0.7",
-        "torch==1.13.1+cu116",
-        "torchvision==0.14.1+cu116",
-        "torchaudio==0.13.1",
+        "torch==1.13.1+cu116@https://download.pytorch.org/whl/cu116",
+        "torchvision==0.14.1+cu116@https://download.pytorch.org/whl/cu116",
+        "torchaudio==0.13.1@https://download.pytorch.org/whl/cu116",
         "torchmetrics==0.8",
         "torchdistill",
         "tqdm",
@@ -54,8 +54,5 @@ setuptools.setup(
         "easydict",
         "clearml",
         "optuna"
-    ],
-    dependency_links=[
-        "https://download.pytorch.org/whl/cu116"
     ]
 )
