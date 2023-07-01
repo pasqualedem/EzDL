@@ -220,15 +220,17 @@ class EzTrainer:
         else:
             raise ValueError("Dataset interface should be str or class")
         data_loader_num_workers = dataset_params.get('num_workers') or 0
-        self.connect_dataset_interface(dataset_interface, data_loader_num_workers)
+        pin_memory = dataset_params.get('pin_memory') or True
+        self.connect_dataset_interface(dataset_interface, data_loader_num_workers, pin_memory)
         return self.dataset_interface
 
-    def connect_dataset_interface(self, dataset_interface, data_loader_num_workers):
+    def connect_dataset_interface(self, dataset_interface, data_loader_num_workers, pin_memory):
         self.dataset_interface = dataset_interface
         self.train_loader, self.valid_loader, self.test_loader, self.classes = \
             self.dataset_interface.get_data_loaders(batch_size_factor=self.num_devices,
                                                     num_workers=data_loader_num_workers,
-                                                    distributed_sampler=self.multi_gpu == MultiGPUMode.DISTRIBUTED_DATA_PARALLEL)
+                                                    distributed_sampler=self.multi_gpu == MultiGPUMode.DISTRIBUTED_DATA_PARALLEL,
+                                                    pin_memory=pin_memory)
 
         self.dataset_params = self.dataset_interface.get_dataset_params()
 
@@ -1849,8 +1851,8 @@ class EzTrainer:
             conf_mat = test_metrics[conf_mat_name].get_cf()
             logger.info(f'Confusion matrix:\n{conf_mat}')
             self.sg_logger.add_table('confusion_matrix', conf_mat.cpu(),
-                                     columns=list(self.dataset_interface.testset.CLASS_LABELS.values()),
-                                     rows=list(self.dataset_interface.testset.CLASS_LABELS.values())
+                                     columns=list(self.dataset_interface.testset.id2label.values()),
+                                     rows=list(self.dataset_interface.testset.id2label.values())
                                      )
         self.sg_logger.add_summary(metrics)
         logger.info(f'Test metrics: {pformat(metrics)}')
@@ -1863,7 +1865,7 @@ class EzTrainer:
             fprs, tprs = zip(*fpr_tpr)
             fprs = torch.cat(fprs)
             tprs = torch.cat(tprs)
-            classes = list(self.dataset_interface.testset.CLASS_LABELS.values())
+            classes = list(self.dataset_interface.testset.id2label.values())
             cls = [[classes[i]] * len(fpr)
                    for i, (fpr, tpr) in enumerate(fpr_tpr)]
             cls = [item for sublist in cls for item in sublist]

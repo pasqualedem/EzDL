@@ -6,6 +6,7 @@ from torchmetrics import JaccardIndex, AUROC, F1Score, ConfusionMatrix
 from torchmetrics import Precision as TPrecision
 from torchmetrics import Recall as TRecall
 from torchmetrics import JaccardIndex as TJaccardIndex
+from torchmetrics.detection.mean_ap import MeanAveragePrecision as TMeanAveragePrecision
 from torchmetrics.functional.classification.roc import _roc_compute
 import torch
 
@@ -94,7 +95,19 @@ class Recall(TRecall):
     def compute(self):
         per_class_recall = super().compute()
         return get_multiclass(self.component_names, per_class_recall)
-    
+
+class MeanAveragePrecision(TMeanAveragePrecision):
+    def update(self, preds: dict, target: list) -> None:
+        # turn dict into list of dicts
+        preds = dict(preds) # for non dict inputs
+        preds['scores'], preds['labels'] = preds['logits'].max(dim=2)
+        if "pred_boxes" in preds:
+            preds['boxes'] = preds.pop('pred_boxes')
+        preds = [{key: value[i] for key, value in preds.items()} for i in range(max(len(v) for v in preds.values()))]
+
+        if target[0].get('labels') is None:
+            target = [{"labels": d['class_labels'], **d} for d in target]
+        super().update(preds, target)
 
 class ConfMat(ConfusionMatrix):
     def __init__(self, num_classes: int, *args, **kwargs):
@@ -155,6 +168,7 @@ def get_metric_titles_components_mapping(metrics):
 
 METRICS = {
     'jaccard': JaccardIndex,
+    'mean_average_precision': MeanAveragePrecision,
     'auc': AUC,
     'perclassauc': PerClassAUC,
     'f1': F1,

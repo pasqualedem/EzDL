@@ -137,9 +137,6 @@ class WeedMapDatasetInterface(DatasetInterface):
                                       transform=test_transform, target_transform=test_target_transform,
                                       return_path=dataset_params['return_path'], period=period)
 
-    def undo_preprocess(self, x):
-        return (Denormalize(self.lib_dataset_params['mean'], self.lib_dataset_params['std'])(x) * 255).type(torch.uint8)
-
     @classmethod
     def get_mean_std(cls, train_folders, channels, dataset_name):
         stats = cls.STATS[dataset_name]
@@ -268,7 +265,7 @@ class WeedMapDatasetInterface(DatasetInterface):
             squeeze0,
             ToLong(),
             FixValue(source=10000, target=1),
-            SegOneHot(num_classes=len(WeedMapDataset.CLASS_LABELS.keys()))
+            SegOneHot(num_classes=len(WeedMapDataset.id2label.keys()))
         ]
 
         if core_utils.get_param(self.dataset_params, 'size', default_val='same') != 'same':
@@ -292,7 +289,7 @@ class WeedMapDatasetInterface(DatasetInterface):
 
 
 class WeedMapDataset(VisionDataset):
-    CLASS_LABELS = {0: "background", 1: "crop", 2: 'weed'}
+    id2label = {0: "background", 1: "crop", 2: 'weed'}
     classes = ['background', 'crop', 'weed']
 
     def __init__(self,

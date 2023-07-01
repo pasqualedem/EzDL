@@ -1,12 +1,10 @@
 path: weedmapping-sequoia
 runs:
   - filters:
-      group: DLPretrainedDrop
-      config.in_params.model.params.fusion_type: null
+      config.in_params.model.name: wd/models/lawin
     updated_config:
       model:
-        params:
-          fusion_type: conv_sum_drop
+        name: lawin
     fix_string_params: null
     updated_meta: null
     keys_to_delete: null

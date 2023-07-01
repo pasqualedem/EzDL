@@ -195,12 +195,12 @@ class ClearMLLogger(BaseSGLogger):
     @multi_process_safe
     def add_mask(self, tag: str, image, mask_dict, global_step: int = 0):
         cmap = mask_dict['predictions']['cmap']
-        labels = mask_dict['ground_truth']['class_labels']
+        labels = mask_dict['ground_truth']['id2label']
         predictions = tensor_to_segmentation_image(mask_dict['predictions']['mask_data'],
-                                                    labels=mask_dict['predictions']['class_labels'], cmap=cmap)
+                                                    labels=mask_dict['predictions']['id2label'], cmap=cmap)
 
         ground_truth, clmap = tensor_to_segmentation_image(mask_dict['ground_truth']['mask_data'], cmap=cmap,
-                                                    labels=mask_dict['ground_truth']['class_labels'], return_clmap=True)
+                                                    labels=mask_dict['ground_truth']['id2label'], return_clmap=True)
         clmap = {labels[i]: '#%02x%02x%02x' % (clmap[labels[i]][0], clmap[labels[i]][1], clmap[labels[i]][2]) for i in range(len(labels))}
         data = np.stack([image, predictions, ground_truth])
         fig = px.imshow(data, facet_col=0, title=tag)

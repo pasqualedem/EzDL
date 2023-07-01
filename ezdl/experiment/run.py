@@ -157,8 +157,14 @@ def train(seg_trainer, train_params, dataset, train_callbacks, val_callbacks):
     # Callbacks
 
     cbcks = [callback_factory(name, params, seg_trainer=seg_trainer, dataset=dataset, loader=dataset.train_loader)
-             for name, params in {**train_callbacks, **val_callbacks}.items()
+             for name, params in train_callbacks.items()
              ]
+    cbcks.extend(
+        [
+            callback_factory(name, params, seg_trainer=seg_trainer, dataset=dataset, loader=dataset.train_loader)
+            for name, params in val_callbacks.items()
+        ]
+    )
     # cbcks = [
     #     MetricsLogCallback(Phase.TRAIN_EPOCH_END, freq=1),
     #     MetricsLogCallback(Phase.VALIDATION_EPOCH_END, freq=1),

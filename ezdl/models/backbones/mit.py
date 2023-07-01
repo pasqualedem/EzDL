@@ -157,19 +157,29 @@ class MiT(nn.Module):
             self.n_blocks = n_blocks
 
     def init_pretrained_weights(self, weights=None, channels_to_load=None):
+        first_conv = 'encoder.patch_embeddings.0.proj.weight'
+        weights = SegformerModel.from_pretrained(self.url).state_dict() if weights is None else weights
+        
         if channels_to_load is None:
             channels_to_load = slice(self.config.num_channels)
         else:
             channels_to_load = [CHANNEL_PRETRAIN[x] for x in channels_to_load]
 
-        weights = SegformerModel.from_pretrained(self.url).state_dict() if weights is None else weights
         if list(weights.keys())[0][:len("encoder.encoder")] == "encoder.encoder": # Remove extra encoder.
             weights = {k[len("encoder."):]: v for k, v in weights.items()}
         keys = weights.keys()
         fkeys = [k for k in keys if int(k.split('.')[2]) < self.n_blocks]
         weights = {k: weights[k] for k in fkeys}
-        weights['encoder.patch_embeddings.0.proj.weight'] = \
-            weights['encoder.patch_embeddings.0.proj.weight'][:, channels_to_load]
+
+        num_to_load = len(channels_to_load) if isinstance(channels_to_load, list) else channels_to_load.stop
+
+        weights[first_conv] = weights[first_conv][:, channels_to_load]
+        if num_to_load < self.config.num_channels:
+            remaining = self.config.num_channels - num_to_load
+            weights[first_conv] = torch.cat([
+                weights[first_conv],
+                self.encoder.state_dict()[first_conv][:, -remaining:]], dim=1)
+            
         self.encoder.load_state_dict(weights)
 
     def hug_forward(self, x):

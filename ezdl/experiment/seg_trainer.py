@@ -514,8 +514,8 @@ class SegmentationTrainer(Trainer):
             cf = test_metrics['conf_mat'].get_cf()
             logger.info(f'Confusion matrix:\n{cf}')
             self.sg_logger.add_table('confusion_matrix', cf.cpu(),
-                                     columns=list(self.dataset_interface.testset.CLASS_LABELS.values()),
-                                     rows=list(self.dataset_interface.testset.CLASS_LABELS.values())
+                                     columns=list(self.dataset_interface.testset.id2label.values()),
+                                     rows=list(self.dataset_interface.testset.id2label.values())
                                      )
         self.sg_logger.add_summary(metrics)
         logger.info(f'Test metrics: {pformat(metrics)}')
@@ -528,7 +528,7 @@ class SegmentationTrainer(Trainer):
             fprs, tprs = zip(*fpr_tpr)
             fprs = torch.cat(fprs)
             tprs = torch.cat(tprs)
-            classes = list(self.dataset_interface.testset.CLASS_LABELS.values())
+            classes = list(self.dataset_interface.testset.id2label.values())
             cls = [[classes[i]] * len(fpr)
                    for i, (fpr, tpr) in enumerate(fpr_tpr)]
             cls = [item for sublist in cls for item in sublist]

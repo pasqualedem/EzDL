@@ -10,6 +10,7 @@ from super_gradients.training.exceptions.dataset_exceptions import IllegalDatase
 from super_gradients.training.utils import get_param
 
 from ezdl.logger.text_logger import get_logger
+from ezdl.transforms import Denormalize
 
 default_dataset_params = {"batch_size": 64, "val_batch_size": 200, "test_batch_size": 200, "dataset_dir": "./data/",
                           "s3_link": None}
@@ -68,9 +69,10 @@ class DatasetInterface:
         self.train_loader, self.val_loader, self.test_loader = train_loader, val_loader, test_loader
         self.classes = classes
         self.batch_size_factor = 1
+        self.lib_dataset_params = None
 
     def build_data_loaders(self, batch_size_factor=1, num_workers=8, train_batch_size=None, val_batch_size=None,
-                           test_batch_size=None, distributed_sampler: bool = False):
+                           test_batch_size=None, distributed_sampler: bool = False, pin_memory=True):
         """
 
         define train, val (and optionally test) loaders. The method deals separately with distributed training and standard
@@ -143,7 +145,7 @@ class DatasetInterface:
                                                         batch_size=train_batch_size,
                                                         shuffle=train_shuffle,
                                                         num_workers=num_workers,
-                                                        pin_memory=True,
+                                                        pin_memory=pin_memory,
                                                         sampler=train_sampler,
                                                         collate_fn=train_collate_fn,
                                                         drop_last=train_loader_drop_last)
@@ -152,7 +154,7 @@ class DatasetInterface:
                                                       batch_size=val_batch_size,
                                                       shuffle=False,
                                                       num_workers=num_workers,
-                                                      pin_memory=True,
+                                                      pin_memory=pin_memory,
                                                       sampler=val_sampler,
                                                       collate_fn=val_collate_fn)
 
@@ -161,7 +163,7 @@ class DatasetInterface:
                                                            batch_size=test_batch_size,
                                                            shuffle=False,
                                                            num_workers=num_workers,
-                                                           pin_memory=True,
+                                                           pin_memory=pin_memory,
                                                            sampler=test_sampler,
                                                            collate_fn=test_collate_fn)
 
@@ -196,3 +198,6 @@ class DatasetInterface:
     def print_dataset_details(self):
         logger.info("{} training samples, {} val samples, {} classes".format(len(self.trainset), len(self.valset),
                                                                              len(self.trainset.classes)))
+        
+    def undo_preprocess(self, x):
+        return (Denormalize(self.lib_dataset_params['mean'], self.lib_dataset_params['std'])(x) * 255).type(torch.uint8)
