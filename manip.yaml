@@ -1,10 +1,10 @@
-path: weedmapping-sequoia
+path: weedmapping-rededge
 runs:
   - filters:
-      config.in_params.model.name: wd/models/lawin
+      config.in_params.model.name: wd/models/doublelawin
     updated_config:
       model:
-        name: lawin
+        name: doublelawin
     fix_string_params: null
     updated_meta: null
     keys_to_delete: null

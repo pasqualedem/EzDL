@@ -93,7 +93,6 @@ class PerExampleMetricCallback(Callback):
                 self.metrics_dict[metric_name][img_name] = res.item()
         else:
             self.metrics_dict[metric_name][img_name] = res
-        
 
     def on_test_batch_end(self, context: PhaseContext):
         metrics = context.metrics_compute_fn.clone()
@@ -102,10 +101,10 @@ class PerExampleMetricCallback(Callback):
             preds = preds.student_output
         if isinstance(context.preds, ComposedOutput):
             preds = preds.main
-        for pred, gt, name in zip(preds, context.target, context.input_name):
+        for pred, gt, name, padding in zip(preds, context.target, context.input_name, context.padding):
             metrics.reset()
             for metric_name, metric_fn in metrics.items():
-                res = metric_fn(pred.unsqueeze(0), gt.unsqueeze(0))  
+                res = metric_fn(pred.unsqueeze(0), gt.unsqueeze(0), [padding])  
                 self.register(name, metric_name, res)
 
                 

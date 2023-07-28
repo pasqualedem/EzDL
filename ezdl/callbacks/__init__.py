@@ -51,7 +51,7 @@ def callback_factory(name, params, **kwargs):
         }[params['phase']]
         if params['phase'] == Phase.TEST_BATCH_END:
             params['batch_idxs'] = range(len(loader))
-        return SegmentationVisualizationCallback(logger=seg_trainer.sg_logger,
+        return DetectionVisualizationCallback(logger=seg_trainer.sg_logger,
                                                  last_img_idx_in_batch=4,
                                                  id2label=dataset.trainset.id2label,
                                                  undo_preprocessing=dataset.undo_preprocess,

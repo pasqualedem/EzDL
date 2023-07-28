@@ -19,7 +19,7 @@ class DetectionVisualizationCallback(PhaseCallback):
     test_sequence_name = 'test_det'
 
     def __init__(self, logger, phase: Phase, freq: int, id2label, batch_idxs=None, last_img_idx_in_batch: int = None,
-                 undo_preprocessing=None, metrics=False):
+                 undo_preprocessing=None, threshold=None, metrics=False):
         super(DetectionVisualizationCallback, self).__init__(phase)
         if batch_idxs is None:
             batch_idxs = [0]
@@ -29,6 +29,7 @@ class DetectionVisualizationCallback(PhaseCallback):
         self.last_img_idx_in_batch = last_img_idx_in_batch
         self.undo_preprocesing = undo_preprocessing
         self.metrics = metrics
+        self.threshold = threshold
         self.prefix = 'train' if phase == Phase.TRAIN_BATCH_END else 'val' \
             if phase == Phase.VALIDATION_BATCH_END else 'test'
 
@@ -50,7 +51,8 @@ class DetectionVisualizationCallback(PhaseCallback):
                                                       undo_preprocessing_func=self.undo_preprocesing,
                                                       prefix=self.prefix,
                                                       names=context.input_name,
-                                                      iteration=context.epoch)
+                                                      iteration=context.epoch,
+                                                      threshold=self.threshold)
 
 
 class DetectionVisualization:
@@ -65,7 +67,8 @@ class DetectionVisualization:
                         use_plotly: bool = False,
                         prefix: str = '',
                         names: List[str] = None,
-                        iteration: int = 0
+                        iteration: int = 0,
+                        threshold: float = None
                         ):
         """
         A helper function to visualize detections predicted by a network:
@@ -98,8 +101,15 @@ class DetectionVisualization:
 
         for i in range(image_np.shape[0]):
             
-            pred = {'boxes': preds['pred_boxes'][i], 'labels': preds['logits'][i].argmax(-1)}
+            pred = {'boxes': preds['pred_boxes'][i], 'logits': preds['logits'][i]}
             target = {'boxes': targets[i]['boxes'], 'labels': targets[i]['class_labels']}
+
+            if threshold is not None:
+                mask = pred['logits'].sigmoid().max(-1)[0] > threshold
+                pred['boxes'] = pred['boxes'][mask]
+                pred['logits'] = pred['logits'][mask]
+
+            pred['labels'] = pred['logits'].argmax(-1)
 
             fig = DetectionVisualization._visualize_image(image_np[i], pred, target, id2label)
             if prefix == 'val':
