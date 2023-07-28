@@ -11,6 +11,8 @@ import torch
 
 from copy import deepcopy
 
+from ezdl.models import ComposedOutput
+
 
 class AUC(AUROC):
     def update(self, preds: Tensor, target: Tensor) -> None:
@@ -45,6 +47,16 @@ def get_multiclass(names, values):
         return per_class
 
 
+def remove_aux(preds):
+    if isinstance(preds, tuple):
+        return preds[0]
+    if isinstance(preds, dict):
+        return preds['out']
+    if isinstance(preds, ComposedOutput):
+        return preds.main
+    return preds
+
+
 def remove_padding(preds, target, padding):
     for i in range(preds.shape[0]):
         w_slice = slice(0, preds.shape[2] - padding[i][1])
@@ -59,6 +71,7 @@ class F1(F1Score):
         super().__init__(**kwargs, average="none", mdmc_average="global")
         
     def update(self, preds: Tensor, target: Tensor, padding=None) -> None:
+        preds = remove_aux(preds)
         if padding is not None:
             for pred, tar in remove_padding(preds, target, padding):
                 super().update(pred, tar)
@@ -74,8 +87,10 @@ class Precision(TPrecision):
         super().__init__(**kwargs, average="none", mdmc_average="global")
         
     def update(self, preds: Tensor, target: Tensor, padding=None) -> None:
+        preds = remove_aux(preds)
         if padding is not None:
-            preds, target = remove_padding(preds, target, padding)
+            for pred, tar in remove_padding(preds, target, padding):
+                super().update(pred, tar)
         super().update(preds, target)
         
     def compute(self):
@@ -88,8 +103,10 @@ class Recall(TRecall):
         super().__init__(**kwargs, average="none", mdmc_average="global")
         
     def update(self, preds: Tensor, target: Tensor, padding=None) -> None:
+        preds = remove_aux(preds)
         if padding is not None:
-            preds, target = remove_padding(preds, target, padding)
+            for pred, tar in remove_padding(preds, target, padding):
+                super().update(pred, tar)
         super().update(preds, target)
     
     def compute(self):
@@ -112,9 +129,11 @@ class ConfMat(ConfusionMatrix):
         return dict(zip(names, map(lambda x: x.item(), cf.flatten())))
     
     def update(self, preds: Tensor, target: Tensor, padding=None) -> None:
+        preds = remove_aux(preds)
         if padding is not None:
-            preds, target = remove_padding(preds, target, padding)
-        return super().update(preds, target)
+            for pred, tar in remove_padding(preds, target, padding):
+                super().update(pred, tar)
+        super().update(preds, target)
 
     def get_cf(self):
         return super().compute()
