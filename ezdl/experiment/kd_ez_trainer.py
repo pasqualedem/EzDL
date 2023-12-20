@@ -12,7 +12,7 @@ from super_gradients.common import MultiGPUMode
 from super_gradients.common.abstractions.abstract_logger import get_logger
 from super_gradients.training import utils as core_utils, models
 from super_gradients.training.dataloaders import dataloaders
-from super_gradients.training.exceptions.kd_trainer_exceptions import (
+from super_gradients.common.exceptions import (
     ArchitectureKwargsException,
     UnsupportedKDArchitectureException,
     InconsistentParamsException,
@@ -21,7 +21,7 @@ from super_gradients.training.exceptions.kd_trainer_exceptions import (
     UndefinedNumClassesException,
 )
 from super_gradients.training.models import SgModule
-from super_gradients.training.models.all_architectures import KD_ARCHITECTURES
+from super_gradients.common.registry.registry import KD_ARCHITECTURES
 from super_gradients.training.models.kd_modules.kd_module import KDModule
 from super_gradients.training.pretrained_models import PRETRAINED_NUM_CLASSES
 from super_gradients.common import StrictLoad

@@ -11,8 +11,23 @@ import plotly.graph_objs as go
 from plotly.subplots import make_subplots
 
 
-class SegmentationVisualizationCallback(PhaseCallback):
+class VisualizationCallback(PhaseCallback):
+    def __init__(self, logger, phase: Phase, freq: int, batch_idxs=None, last_img_idx_in_batch: int = None):
+        super(VisualizationCallback, self).__init__(phase)
+        if batch_idxs is None:
+            batch_idxs = [0]
+        self.freq = freq
+        self.batch_idxs = batch_idxs
+        self.last_img_idx_in_batch = last_img_idx_in_batch
+        self.prefix = 'train' if phase == Phase.TRAIN_EPOCH_END else 'val' \
+            if phase == Phase.VALIDATION_BATCH_END else 'test'
+        if phase == Phase.TEST_BATCH_END:
+            logger.create_image_mask_sequence(f'{self.prefix}_{self.suffix}')
+
+
+class SegmentationVisualizationCallback(VisualizationCallback):
     test_sequence_name = 'test_seg'
+    suffix = 'seg'
     """
     A callback that adds a visualization of a batch of segmentation predictions to context.sg_logger
     Attributes:
@@ -23,21 +38,15 @@ class SegmentationVisualizationCallback(PhaseCallback):
 
     def __init__(self, logger, phase: Phase, freq: int, id2label, batch_idxs=None, last_img_idx_in_batch: int = None,
                  undo_preprocessing=None, use_plotly=False, metrics=False, cmap=None):
-        super(SegmentationVisualizationCallback, self).__init__(phase)
+        super(SegmentationVisualizationCallback, self).__init__(
+            phase=phase, freq=freq, logger=logger, batch_idxs=batch_idxs, last_img_idx_in_batch=last_img_idx_in_batch)
         if batch_idxs is None:
             batch_idxs = [0]
-        self.freq = freq
         self.id2label = id2label
-        self.batch_idxs = batch_idxs
-        self.last_img_idx_in_batch = last_img_idx_in_batch
         self.undo_preprocesing = undo_preprocessing
         self.cmap = cmap
         self.use_plotly = use_plotly
         self.metrics = metrics
-        self.prefix = 'train' if phase == Phase.TRAIN_EPOCH_END else 'val' \
-            if phase == Phase.VALIDATION_BATCH_END else 'test'
-        if phase == Phase.TEST_BATCH_END:
-            logger.create_image_mask_sequence(f'{self.prefix}_seg')
 
     def __call__(self, context: PhaseContext):
         epoch = context.epoch if context.epoch is not None else 0
@@ -228,3 +237,106 @@ class SaveSegmentationPredictionsCallback(PhaseCallback):
                 img_to_draw[mask] = color
 
             Image.fromarray(img_to_draw.numpy()).save(path)
+
+
+class HeatmapVisualizationCallback(VisualizationCallback):
+    test_sequence_name = 'test_heatmap'
+    suffix = 'heatmap'
+    """
+    A callback that adds a visualization of a batch of heatmaps to context.sg_logger when available
+    Attributes:
+        freq: frequency (in epochs) to perform this callback.
+        batch_idx: batch index to perform visualization for.
+        last_img_idx_in_batch: Last image index to add to log. (default=-1, will take entire batch).
+    """
+    def __call__(self, context: PhaseContext):
+        epoch = context.epoch if context.epoch is not None else 0
+        if epoch % self.freq == 0 and context.batch_idx in self.batch_idxs:
+            if hasattr(context.preds, "student_output"): # is knowledge distillation
+                preds = context.preds.student_output.clone()
+            else:
+                preds = context.preds
+            if hasattr(context.preds, "aux"):
+                heatmaps = preds.aux['heatmaps'].clone()
+            else:
+                raise ValueError("HeatmapVisualizationCallback requires heatmaps in context.preds.aux")
+
+            HeatmapVisualization.visualize_batch(logger=context.sg_logger,
+                                                      heatmap_tensor=heatmaps,
+                                                      batch_name=context.batch_idx,
+                                                      prefix=self.prefix,
+                                                      suffix=self.suffix,
+                                                      names=context.input_name,
+                                                      iteration=context.epoch)
+            if self.prefix == 'test' and context.batch_idx == self.batch_idxs[-1]:
+                context.sg_logger.add_image_mask_sequence(f'{self.prefix}_heatmap')
+
+
+class HeatmapVisualization:
+    @staticmethod
+    def visualize_batch(logger, 
+                        heatmap_tensor: torch.Tensor,
+                        batch_name: Union[int, str],
+                        prefix: str = '',
+                        suffix: str = '',
+                        names: List[str] = None,
+                        iteration: int = 0
+                        ):
+        """
+        A helper function to visualize detections predicted by a network:
+        saves images into a given path with a name that is {batch_name}_{imade_idx_in_the_batch}.jpg, one batch per call.
+        Colors are generated on the fly: uniformly sampled from color wheel to support all given classes.
+
+        :param iteration:
+        :param names:
+        :param prefix:
+        :param image_tensor:            rgb images, (B, H, W, 3)
+        :param batch_name:              id of the current batch to use for image naming
+        :param undo_preprocessing_func: a function to convert preprocessed images tensor into a batch of cv2-like images
+        :param image_scale:             scale factor for output image
+        """
+        heatmap_np = heatmap_tensor.detach().cpu().numpy()
+
+        if names is None:
+            names = ['_'.join([prefix, suffix, str(batch_name), str(i)]) if prefix == 'val' else \
+                         '_'.join([prefix, suffix, str(batch_name * heatmap_np.shape[0] + i)]) for i in
+                     range(heatmap_np.shape[0])]
+        else:
+            names = [f"{prefix}_{suffix}_{name}" for name in names]
+
+        for i in range(heatmap_np.shape[0]):
+            heatmap = heatmap_tensor[i].detach().cpu().numpy()
+            fig = HeatmapVisualization.visualize_image(heatmap)
+            if prefix == 'val':
+                logger.add_plotly_figure(names[i], fig, global_step=iteration)
+            else:
+                logger.add_plotly_figure(names[i], fig)
+
+    @staticmethod
+    def visualize_image(image: np.ndarray):
+        """
+        :param image: numpy image
+        :return:
+        """
+        n_plots = image.shape[0]
+        cols = min(n_plots, 4)
+        rows = int(np.ceil(n_plots / cols))
+        fig = make_subplots(rows=rows, cols=cols, shared_xaxes=True, shared_yaxes=True)
+
+        for i in range(image.shape[0]):
+            row = i // cols + 1
+            col = i % cols + 1
+            trace = go.Heatmap(z=image[i], showlegend=False, colorscale='viridis', showscale=False, name=f"channel_{i}")
+            fig.add_trace(trace, row=row, col=col)
+        
+        min_size = 192
+        width = image.shape[2]
+        height = image.shape[1]
+        if width < min_size:
+            ratio = width / height
+            width = min_size
+            height = min_size // ratio
+
+        fig.update_layout(width=width*cols, height=height*rows, margin=dict(t=100, b=100, l=50, r=50))
+        
+        return fig

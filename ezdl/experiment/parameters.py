@@ -1,6 +1,6 @@
 from typing import Tuple
 import numpy as np
-from super_gradients.training.utils.callbacks.all_callbacks import LR_SCHEDULERS_CLS_DICT
+from super_gradients.common.registry.registry import LR_SCHEDULERS_CLS_DICT
 import torch
 from super_gradients.training.utils.callbacks import Phase
 from super_gradients.training.utils.early_stopping import EarlyStop

@@ -6,7 +6,7 @@ from torch.utils.data.distributed import DistributedSampler
 from super_gradients.training import utils as core_utils
 from super_gradients.training.datasets.mixup import CollateMixup
 from super_gradients.training.datasets.samplers.repeated_augmentation_sampler import RepeatAugSampler
-from super_gradients.training.exceptions.dataset_exceptions import IllegalDatasetParameterException
+from super_gradients.common.exceptions import IllegalDatasetParameterException
 from super_gradients.training.utils import get_param
 
 from ezdl.logger.text_logger import get_logger

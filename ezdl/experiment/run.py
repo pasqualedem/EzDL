@@ -12,11 +12,9 @@ from ezdl.logger.basesg_logger import AbstractRunWrapper
 
 from ezdl.logger.text_logger import get_logger
 from ezdl.callbacks import MetricsLogCallback, callback_factory
-from ezdl.experiment.kd_seg_trainer import KDSegTrainer
 from ezdl.experiment.ez_trainer import EzTrainer
 from ezdl.experiment.kd_ez_trainer import KDEzTrainer
 from ezdl.experiment.parameters import parse_params
-from ezdl.experiment.seg_trainer import SegmentationTrainer
 from ezdl.utils.utilities import dict_to_yaml_string, values_to_number, nested_dict_update
 
 logger = get_logger(__name__)

@@ -12,6 +12,7 @@ wandb
 data
 dataset
 venv
+venv3.10
 checkpoints
 ezdl.egg-info
 

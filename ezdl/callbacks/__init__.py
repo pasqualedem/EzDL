@@ -39,6 +39,18 @@ def callback_factory(name, params, **kwargs):
                                                  id2label=dataset.trainset.id2label,
                                                  undo_preprocessing=dataset.undo_preprocess,
                                                  **params)
+    if name == "HeatmapVisualizationCallback":
+        seg_trainer = kwargs['seg_trainer']
+        loader = kwargs['loader']
+        params['freq'] = params.get('freq', 1)
+        params['phase'] = Phase.VALIDATION_BATCH_END \
+            if params['phase'] == 'validation' \
+            else Phase.TEST_BATCH_END
+        if params['phase'] == Phase.TEST_BATCH_END:
+            params['batch_idxs'] = range(len(loader))
+        return SegmentationVisualizationCallback(logger=seg_trainer.sg_logger,
+                                                 last_img_idx_in_batch=4,
+                                                 **params)
     if name == "DetectionVisualizationCallback":
         seg_trainer = kwargs['seg_trainer']
         loader = kwargs['loader']

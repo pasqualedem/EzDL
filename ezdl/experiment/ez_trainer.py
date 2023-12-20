@@ -20,20 +20,28 @@ from piptools.scripts.sync import _get_installed_distributions
 from ptflops import get_model_complexity_info
 
 from super_gradients.common.abstractions.abstract_logger import get_logger
-from super_gradients.common.data_types.enum import MultiGPUMode, StrictLoad, EvaluationType
+from super_gradients.common.data_types.enum import (
+    MultiGPUMode,
+    StrictLoad,
+    EvaluationType,
+)
 from super_gradients.common.decorators.factory_decorator import resolve_param
 from super_gradients.common.environment.device_utils import device_config
 from super_gradients.common.factories.callbacks_factory import CallbacksFactory
 from super_gradients.common.factories.list_factory import ListFactory
 from super_gradients.common.factories.losses_factory import LossesFactory
 from super_gradients.common.factories.metrics_factory import MetricsFactory
-from super_gradients.common.sg_loggers import SG_LOGGERS
+from super_gradients.common.sg_loggers import __all__ as SG_LOGGERS
 from super_gradients.common.sg_loggers.abstract_sg_logger import AbstractSGLogger
 from super_gradients.common.sg_loggers.base_sg_logger import BaseSGLogger
 from super_gradients.training import utils as core_utils, models, dataloaders
-from super_gradients.training.datasets.datasets_utils import DatasetStatisticsTensorboardLogger
+from super_gradients.training.datasets.datasets_utils import (
+    DatasetStatisticsTensorboardLogger,
+)
 from super_gradients.training.datasets.samplers import InfiniteSampler, RepeatAugSampler
-from super_gradients.training.exceptions.sg_trainer_exceptions import UnsupportedOptimizerFormat
+from super_gradients.common.exceptions.sg_trainer_exceptions import (
+    UnsupportedOptimizerFormat,
+)
 from super_gradients.training.metrics import Accuracy, Top5
 from super_gradients.training.metrics.metric_utils import (
     get_metrics_titles,
@@ -43,7 +51,7 @@ from super_gradients.training.metrics.metric_utils import (
     get_train_loop_description_dict,
 )
 from super_gradients.training.models import SgModule
-from super_gradients.training.models.all_architectures import ARCHITECTURES
+from super_gradients.training.models import __all__ as ARCHITECTURES
 from super_gradients.training.params import TrainingParams
 from super_gradients.training.pretrained_models import PRETRAINED_NUM_CLASSES
 from super_gradients.training.utils import HpmStruct
@@ -54,13 +62,10 @@ from super_gradients.training.utils.callbacks import (
     Phase,
     LR_SCHEDULERS_CLS_DICT,
     PhaseContext,
-    MetricsUpdateCallback,
     LR_WARMUP_CLS_DICT,
-    ContextSgMethods,
     LRCallbackBase,
 )
 from super_gradients.training.utils.checkpoint_utils import (
-    get_ckpt_local_path,
     read_ckpt_state_dict,
     load_checkpoint_to_model,
     load_pretrained_weights,
@@ -80,9 +85,11 @@ from super_gradients.training.utils.distributed_training_utils import (
     DDPNotSetupException,
 )
 from super_gradients.training.utils.ema import ModelEMA
-from super_gradients.training.utils.hydra_utils import load_experiment_cfg, add_params_to_cfg
 from super_gradients.training.utils.optimizer_utils import build_optimizer
-from super_gradients.training.utils.sg_trainer_utils import MonitoredValue, log_main_training_params
+from super_gradients.training.utils.sg_trainer_utils import (
+    MonitoredValue,
+    log_main_training_params,
+)
 from super_gradients.training.utils.utils import fuzzy_idx_in_list
 from super_gradients.training.utils.weight_averaging_utils import ModelWeightAveraging
 
@@ -107,7 +114,17 @@ logger = get_logger(__name__)
 
 
 class EzTrainer:
-    def __init__(self, project_name, group_name="", ckpt_root_dir=None, model_checkpoints_location: str = 'local', num_devices=1, multi_gpu=MultiGPUMode.AUTO, device: str = None, **kwargs):
+    def __init__(
+        self,
+        project_name,
+        group_name="",
+        ckpt_root_dir=None,
+        model_checkpoints_location: str = "local",
+        num_devices=1,
+        multi_gpu=MultiGPUMode.AUTO,
+        device: str = None,
+        **kwargs,
+    ):
         """
 
         :param experiment_project:              Used for logging and loading purposes
@@ -123,11 +140,7 @@ class EzTrainer:
         self.run_id = None
         self.num_devices = num_devices
         self.multi_gpu = multi_gpu
-        setup_device(
-            num_gpus=num_devices,
-            multi_gpu=multi_gpu,
-            device=device
-        )
+        setup_device(num_gpus=num_devices, multi_gpu=multi_gpu, device=device)
         self.train_initialized = False
         self.validation = False
         self.model_checkpoints_location = model_checkpoints_location
@@ -136,7 +149,12 @@ class EzTrainer:
             raise DDPNotSetupException()
 
         # SET THE EMPTY PROPERTIES
-        self.net, self.architecture, self.arch_params, self.dataset_interface = None, None, None, None
+        self.net, self.architecture, self.arch_params, self.dataset_interface = (
+            None,
+            None,
+            None,
+            None,
+        )
         self.ema = None
         self.ema_model = None
         self.sg_logger = None
@@ -175,7 +193,9 @@ class EzTrainer:
         self.valid_metrics = None
         self.greater_metric_to_watch_is_better = None
         self.metric_to_watch = None
-        self.greater_train_metrics_is_better: Dict[str, bool] = {}  # For each metric, indicates if greater is better
+        self.greater_train_metrics_is_better: Dict[
+            str, bool
+        ] = {}  # For each metric, indicates if greater is better
         self.greater_valid_metrics_is_better: Dict[str, bool] = {}
 
         # SETTING THE PROPERTIES FROM THE CONSTRUCTOR
@@ -183,25 +203,40 @@ class EzTrainer:
         self.group_name = group_name
         self.ckpt_name = None
 
-        self.checkpoints_dir_path = get_checkpoints_dir_path(project_name, group_name, ckpt_root_dir)
+        self.checkpoints_dir_path = get_checkpoints_dir_path(
+            project_name, group_name, ckpt_root_dir
+        )
         self.phase_callback_handler: CallbackHandler = None
 
         # SET THE DEFAULTS
         # TODO: SET DEFAULT TRAINING PARAMS FOR EACH TASK
 
-        default_results_titles = ["Train Loss", "Train Acc", "Train Top5", "Valid Loss", "Valid Acc", "Valid Top5"]
+        default_results_titles = [
+            "Train Loss",
+            "Train Acc",
+            "Train Top5",
+            "Valid Loss",
+            "Valid Acc",
+            "Valid Top5",
+        ]
 
         self.results_titles = default_results_titles
 
-        default_train_metrics, default_valid_metrics = MetricCollection([Accuracy(), Top5()]), MetricCollection([Accuracy(), Top5()])
+        default_train_metrics, default_valid_metrics = MetricCollection(
+            [Accuracy(), Top5()]
+        ), MetricCollection([Accuracy(), Top5()])
 
-        self.train_metrics, self.valid_metrics = default_train_metrics, default_valid_metrics
+        self.train_metrics, self.valid_metrics = (
+            default_train_metrics,
+            default_valid_metrics,
+        )
 
         self.train_monitored_values = {}
         self.valid_monitored_values = {}
+        self.test_monitored_values = {}
         self.max_train_batches = None
         self.max_valid_batches = None
-        
+
     @property
     def device(self) -> str:
         return device_config.device
@@ -209,7 +244,9 @@ class EzTrainer:
     def init_dataset(self, dataset_interface, dataset_params):
         if isinstance(dataset_interface, str):
             try:
-                module, dataset_interface_cls = get_module_class_from_path(dataset_interface)
+                module, dataset_interface_cls = get_module_class_from_path(
+                    dataset_interface
+                )
                 dataset_module = importlib.import_module(module)
                 dataset_interface_cls = getattr(dataset_module, dataset_interface_cls)
             except AttributeError as e:
@@ -219,27 +256,46 @@ class EzTrainer:
             pass
         else:
             raise ValueError("Dataset interface should be str or class")
-        data_loader_num_workers = dataset_params.get('num_workers') or 0
-        pin_memory = dataset_params.get('pin_memory') or True
-        self.connect_dataset_interface(dataset_interface, data_loader_num_workers, pin_memory)
+        data_loader_num_workers = dataset_params.get("num_workers") or 0
+        pin_memory = dataset_params.get("pin_memory") or True
+        self.connect_dataset_interface(
+            dataset_interface, data_loader_num_workers, pin_memory
+        )
         return self.dataset_interface
 
-    def connect_dataset_interface(self, dataset_interface, data_loader_num_workers, pin_memory):
+    def connect_dataset_interface(
+        self, dataset_interface, data_loader_num_workers, pin_memory
+    ):
         self.dataset_interface = dataset_interface
-        self.train_loader, self.valid_loader, self.test_loader, self.classes = \
-            self.dataset_interface.get_data_loaders(batch_size_factor=self.num_devices,
-                                                    num_workers=data_loader_num_workers,
-                                                    distributed_sampler=self.multi_gpu == MultiGPUMode.DISTRIBUTED_DATA_PARALLEL,
-                                                    pin_memory=pin_memory)
+        (
+            self.train_loader,
+            self.valid_loader,
+            self.test_loader,
+            self.classes,
+        ) = self.dataset_interface.get_data_loaders(
+            batch_size_factor=self.num_devices,
+            num_workers=data_loader_num_workers,
+            distributed_sampler=self.multi_gpu
+            == MultiGPUMode.DISTRIBUTED_DATA_PARALLEL,
+            pin_memory=pin_memory,
+        )
 
         self.dataset_params = self.dataset_interface.get_dataset_params()
 
     def _set_dataset_params(self):
         self.dataset_params = {
-            "train_dataset_params": self.train_loader.dataset.dataset_params if hasattr(self.train_loader.dataset, "dataset_params") else None,
-            "train_dataloader_params": self.train_loader.dataloader_params if hasattr(self.train_loader, "dataloader_params") else None,
-            "valid_dataset_params": self.valid_loader.dataset.dataset_params if hasattr(self.valid_loader.dataset, "dataset_params") else None,
-            "valid_dataloader_params": self.valid_loader.dataloader_params if hasattr(self.valid_loader, "dataloader_params") else None,
+            "train_dataset_params": self.train_loader.dataset.dataset_params
+            if hasattr(self.train_loader.dataset, "dataset_params")
+            else None,
+            "train_dataloader_params": self.train_loader.dataloader_params
+            if hasattr(self.train_loader, "dataloader_params")
+            else None,
+            "valid_dataset_params": self.valid_loader.dataset.dataset_params
+            if hasattr(self.valid_loader.dataset, "dataset_params")
+            else None,
+            "valid_dataloader_params": self.valid_loader.dataloader_params
+            if hasattr(self.valid_loader, "dataloader_params")
+            else None,
         }
         self.dataset_params = HpmStruct(**self.dataset_params)
 
@@ -252,7 +308,12 @@ class EzTrainer:
         self.phase_callbacks.append(AuxMetricsUpdateCallback(phase))
 
     def _instantiate_net(
-        self, architecture: Union[torch.nn.Module, SgModule.__class__, str], arch_params: dict, checkpoint_params: dict, *args, **kwargs
+        self,
+        architecture: Union[torch.nn.Module, SgModule.__class__, str],
+        arch_params: dict,
+        checkpoint_params: dict,
+        *args,
+        **kwargs,
     ) -> tuple:
         """
         Instantiates nn.Module according to architecture and arch_params, and handles pretrained weights and the required
@@ -266,7 +327,9 @@ class EzTrainer:
         :return: instantiated netowrk i.e torch.nn.Module, architecture_class (will be none when architecture is not str)
 
         """
-        pretrained_weights = core_utils.get_param(checkpoint_params, "pretrained_weights", default_val=None)
+        pretrained_weights = core_utils.get_param(
+            checkpoint_params, "pretrained_weights", default_val=None
+        )
 
         if pretrained_weights is not None:
             num_classes_new_head = arch_params.num_classes
@@ -299,25 +362,29 @@ class EzTrainer:
         return ModelEMA.from_params(self.net, **ema_params)
 
     def _load_model(self, params):
-        model_params = params['model']
-        input_channels = len(params['dataset']['channels'])
-        output_channels = params['dataset']['num_classes']
+        model_params = params["model"]
+        input_channels = len(params["dataset"]["channels"])
+        output_channels = params["dataset"]["num_classes"]
         arch_params = {
-            'input_channels': input_channels,
-            'output_channels': output_channels,
-            'in_channels': input_channels,
-            'out_channels': output_channels,
-            'num_classes': output_channels,
-            **model_params['params']
+            "input_channels": input_channels,
+            "output_channels": output_channels,
+            "in_channels": input_channels,
+            "out_channels": output_channels,
+            "num_classes": output_channels,
+            **model_params["params"],
         }
         try:
-            model = instantiate_class(model_params['name'], arch_params)
+            model = instantiate_class(model_params["name"], arch_params)
         except (AttributeError, ValueError) as ex:
-            logger.warn(f"Failed to instantiate model {model_params['name']}, trying to load from models dict. Error: {ex}")
-            if model_params['name'] in MODELS_DICT.keys():
-                model = MODELS_DICT[model_params['name']](arch_params)
+            logger.warn(
+                f"Failed to instantiate model {model_params['name']}, trying to load from models dict. Error: {ex}"
+            )
+            if model_params["name"] in MODELS_DICT.keys():
+                model = MODELS_DICT[model_params["name"]](arch_params)
             else:
-                model = models.get(model_name=model_params['name'], arch_params=arch_params)
+                model = models.get(
+                    model_name=model_params["name"], arch_params=arch_params
+                )
 
         return model, arch_params
 
@@ -325,45 +392,61 @@ class EzTrainer:
         # load model
         model, arch_params = self._load_model(params)
 
-        if 'num_classes' not in arch_params.keys():
+        if "num_classes" not in arch_params.keys():
             if self.classes is None and self.dataset_interface is None:
-                raise Exception('Error', 'Number of classes not defined in arch params and dataset is not defined')
+                raise Exception(
+                    "Error",
+                    "Number of classes not defined in arch params and dataset is not defined",
+                )
             else:
-                arch_params['num_classes'] = len(self.classes)
+                arch_params["num_classes"] = len(self.classes)
 
         self.arch_params = core_utils.HpmStruct(**arch_params)
         self.net = model
 
         self._net_to_device()
         # SET THE FLAG FOR DIFFERENT PARAMETER GROUP OPTIMIZER UPDATE
-        self.update_param_groups = hasattr(self.net.module, 'update_param_groups')
+        self.update_param_groups = hasattr(self.net.module, "update_param_groups")
 
         if resume and checkpoint_path is not None:
-            self.checkpoint = load_checkpoint_to_model(ckpt_local_path=checkpoint_path,
-                                                       load_backbone=False,
-                                                       net=self.net,
-                                                       strict=StrictLoad.ON.value,
-                                                       load_weights_only=self.load_weights_only)
+            self.checkpoint = load_checkpoint_to_model(
+                ckpt_local_path=checkpoint_path,
+                load_backbone=False,
+                net=self.net,
+                strict=StrictLoad.ON.value,
+                load_weights_only=self.load_weights_only,
+            )
             self.load_checkpoint = True
 
-            if 'ema_net' in self.checkpoint.keys():
+            if "ema_net" in self.checkpoint.keys():
                 logger.warning(
                     "[WARNING] Main network has been loaded from checkpoint but EMA network exists as well. It "
-                    " will only be loaded during validation when training with ema=True. ")
+                    " will only be loaded during validation when training with ema=True. "
+                )
 
             # UPDATE TRAINING PARAMS IF THEY EXIST & WE ARE NOT LOADING AN EXTERNAL MODEL's WEIGHTS
-            self.best_metric = self.checkpoint['acc'] if 'acc' in self.checkpoint.keys() else -1
-            self.start_epoch = self.checkpoint['epoch'] if 'epoch' in self.checkpoint.keys() else 0
-            
+            self.best_metric = (
+                self.checkpoint["acc"] if "acc" in self.checkpoint.keys() else -1
+            )
+            self.start_epoch = (
+                self.checkpoint["epoch"] if "epoch" in self.checkpoint.keys() else 0
+            )
+
     def print_model_summary(self, model=None):
         net = self.net if model is None else model
         size = (3, 224, 224)
         if hasattr(self.dataset_interface, "size"):
             size = self.dataset_interface.size
         logger.info(f"Model summary: with input size {size}")
-        macs, params = get_model_complexity_info(net, size, as_strings=True,
-                                        print_per_layer_stat=True, verbose=True, 
-                                        flops_units="GMac", param_units="M")
+        macs, params = get_model_complexity_info(
+            net,
+            size,
+            as_strings=True,
+            print_per_layer_stat=True,
+            verbose=True,
+            flops_units="GMac",
+            param_units="M",
+        )
         logger.info(f"Total GMacs: {macs}, Total params: {params}")
         macs = float(macs.split(" ")[0])
         params = float(params.split(" ")[0])
@@ -384,11 +467,14 @@ class EzTrainer:
 
         if self.load_checkpoint or self.external_checkpoint_path:
             # GET LOCAL PATH TO THE CHECKPOINT FILE FIRST
-            ckpt_local_path = get_ckpt_local_path(
-                source_ckpt_folder_name=self.source_ckpt_folder_name,
-                experiment_name=self.project_name,
-                ckpt_name=self.ckpt_name,
-                external_checkpoint_path=self.external_checkpoint_path,
+            ckpt_name = core_utils.get_param(
+                self.training_params, "ckpt_name", "ckpt_latest.pth"
+            )
+            resume_path = core_utils.get_param(self.training_params, "resume_path")
+            ckpt_local_path = (
+                resume_path
+                if resume_path
+                else os.path.join(self.checkpoints_dir_path, ckpt_name)
             )
 
             # LOAD CHECKPOINT TO MODEL
@@ -396,7 +482,9 @@ class EzTrainer:
                 ckpt_local_path=ckpt_local_path,
                 load_backbone=self.load_backbone,
                 net=self.net,
-                strict=self.strict_load.value if isinstance(self.strict_load, StrictLoad) else self.strict_load,
+                strict=self.strict_load.value
+                if isinstance(self.strict_load, StrictLoad)
+                else self.strict_load,
                 load_weights_only=self.load_weights_only,
                 load_ema_as_net=self.load_ema_as_net,
             )
@@ -409,8 +497,12 @@ class EzTrainer:
                 )
 
         # UPDATE TRAINING PARAMS IF THEY EXIST & WE ARE NOT LOADING AN EXTERNAL MODEL's WEIGHTS
-        self.best_metric = self.checkpoint["acc"] if "acc" in self.checkpoint.keys() else -1
-        self.start_epoch = self.checkpoint["epoch"] if "epoch" in self.checkpoint.keys() else 0
+        self.best_metric = (
+            self.checkpoint["acc"] if "acc" in self.checkpoint.keys() else -1
+        )
+        self.start_epoch = (
+            self.checkpoint["epoch"] if "epoch" in self.checkpoint.keys() else 0
+        )
 
     def _prep_net_for_train(self):
         if self.arch_params is None:
@@ -418,7 +510,9 @@ class EzTrainer:
 
         # TODO: REMOVE THE BELOW LINE (FOR BACKWARD COMPATIBILITY)
         if self.checkpoint_params is None:
-            self.checkpoint_params = HpmStruct(load_checkpoint=self.training_params.resume)
+            self.checkpoint_params = HpmStruct(
+                load_checkpoint=self.training_params.resume
+            )
 
         self._net_to_device()
 
@@ -426,12 +520,22 @@ class EzTrainer:
         self.update_param_groups = hasattr(self.net.module, "update_param_groups")
 
         self.checkpoint = {}
-        self.strict_load = core_utils.get_param(self.training_params, "resume_strict_load", StrictLoad.ON)
+        self.strict_load = core_utils.get_param(
+            self.training_params, "resume_strict_load", StrictLoad.ON
+        )
         self.load_ema_as_net = False
-        self.load_checkpoint = core_utils.get_param(self.training_params, "resume", False)
-        self.external_checkpoint_path = core_utils.get_param(self.training_params, "resume_path")
-        self.load_checkpoint = self.load_checkpoint or self.external_checkpoint_path is not None
-        self.ckpt_name = core_utils.get_param(self.training_params, "ckpt_name", "ckpt_latest.pth")
+        self.load_checkpoint = core_utils.get_param(
+            self.training_params, "resume", False
+        )
+        self.external_checkpoint_path = core_utils.get_param(
+            self.training_params, "resume_path"
+        )
+        self.load_checkpoint = (
+            self.load_checkpoint or self.external_checkpoint_path is not None
+        )
+        self.ckpt_name = core_utils.get_param(
+            self.training_params, "ckpt_name", "ckpt_latest.pth"
+        )
         # self._load_checkpoint_to_model()
 
     def _init_arch_params(self):
@@ -810,24 +914,39 @@ class EzTrainer:
         self.train_loader = train_loader or self.train_loader
         self.valid_loader = valid_loader or self.valid_loader
 
-        if hasattr(self.train_loader, "batch_sampler") and self.train_loader.batch_sampler is not None:
+        if (
+            hasattr(self.train_loader, "batch_sampler")
+            and self.train_loader.batch_sampler is not None
+        ):
             batch_size = self.train_loader.batch_sampler.batch_size
         else:
             batch_size = self.train_loader.batch_size
 
-        if len(self.train_loader.dataset) % batch_size != 0 and not self.train_loader.drop_last:
-            logger.warning("Train dataset size % batch_size != 0 and drop_last=False, this might result in smaller " "last batch.")
+        if (
+            len(self.train_loader.dataset) % batch_size != 0
+            and not self.train_loader.drop_last
+        ):
+            logger.warning(
+                "Train dataset size % batch_size != 0 and drop_last=False, this might result in smaller "
+                "last batch."
+            )
         self._set_dataset_params()
 
         if device_config.multi_gpu == MultiGPUMode.DISTRIBUTED_DATA_PARALLEL:
             # Note: the dataloader uses sampler of the batch_sampler when it is not None.
-            train_sampler = self.train_loader.batch_sampler.sampler if self.train_loader.batch_sampler is not None else self.train_loader.sampler
+            train_sampler = (
+                self.train_loader.batch_sampler.sampler
+                if self.train_loader.batch_sampler is not None
+                else self.train_loader.sampler
+            )
             if isinstance(train_sampler, SequentialSampler):
                 raise ValueError(
                     "You are using a SequentialSampler on you training dataloader, while working on DDP. "
                     "This cancels the DDP benefits since it makes each process iterate through the entire dataset"
                 )
-            if not isinstance(train_sampler, (DistributedSampler, InfiniteSampler, RepeatAugSampler)):
+            if not isinstance(
+                train_sampler, (DistributedSampler, InfiniteSampler, RepeatAugSampler)
+            ):
                 logger.warning(
                     "The training sampler you are using might not support DDP. "
                     "If it doesnt, please use one of the following sampler: DistributedSampler, InfiniteSampler, RepeatAugSampler"
@@ -839,20 +958,32 @@ class EzTrainer:
         self._prep_net_for_train()
 
         # SET RANDOM SEED
-        random_seed(is_ddp=device_config.multi_gpu == MultiGPUMode.DISTRIBUTED_DATA_PARALLEL, device=device_config.device, seed=self.training_params.seed)
+        random_seed(
+            is_ddp=device_config.multi_gpu == MultiGPUMode.DISTRIBUTED_DATA_PARALLEL,
+            device=device_config.device,
+            seed=self.training_params.seed,
+        )
 
         silent_mode = self.training_params.silent_mode or self.ddp_silent_mode
         # METRICS
-        self._set_train_metrics(train_metrics_list=self.training_params.train_metrics_list)
-        self._set_valid_metrics(valid_metrics_list=self.training_params.valid_metrics_list)
+        self._set_train_metrics(
+            train_metrics_list=self.training_params.train_metrics_list
+        )
+        self._set_valid_metrics(
+            valid_metrics_list=self.training_params.valid_metrics_list
+        )
 
         # Store the metric to follow (loss\accuracy) and initialize as the worst value
         self.metric_to_watch = self.training_params.metric_to_watch
-        self.greater_metric_to_watch_is_better = self.training_params.greater_metric_to_watch_is_better
+        self.greater_metric_to_watch_is_better = (
+            self.training_params.greater_metric_to_watch_is_better
+        )
 
         # Allowing loading instantiated loss or string
         if isinstance(self.training_params.loss, str):
-            self.criterion = LossesFactory().get({self.training_params.loss: self.training_params.criterion_params})
+            self.criterion = LossesFactory().get(
+                {self.training_params.loss: self.training_params.criterion_params}
+            )
 
         elif isinstance(self.training_params.loss, Mapping):
             self.criterion = LossesFactory().get(self.training_params.loss)
@@ -873,14 +1004,20 @@ class EzTrainer:
         num_batches = len(self.train_loader)
 
         if self.ema:
-            self.ema_model = self._instantiate_ema_model(self.training_params.ema_params)
-            self.ema_model.updates = self.start_epoch * num_batches // self.batch_accumulate
+            self.ema_model = self._instantiate_ema_model(
+                self.training_params.ema_params
+            )
+            self.ema_model.updates = (
+                self.start_epoch * num_batches // self.batch_accumulate
+            )
             if self.load_checkpoint:
                 if "ema_net" in self.checkpoint.keys():
                     self.ema_model.ema.load_state_dict(self.checkpoint["ema_net"])
                 else:
                     self.ema = False
-                    logger.warning("[Warning] Checkpoint does not include EMA weights, continuing training without EMA.")
+                    logger.warning(
+                        "[Warning] Checkpoint does not include EMA weights, continuing training without EMA."
+                    )
 
         self.run_validation_freq = self.training_params.run_validation_freq
         validation_results_tuple = ()
@@ -915,7 +1052,9 @@ class EzTrainer:
         elif warmup_mode is not None:
             pass
         else:
-            raise RuntimeError("warmup_mode has to be either a name of a mode (str) or a subclass of PhaseCallback")
+            raise RuntimeError(
+                "warmup_mode has to be either a name of a mode (str) or a subclass of PhaseCallback"
+            )
 
         if warmup_callback_cls is not None:
             self.phase_callbacks.append(
@@ -932,7 +1071,9 @@ class EzTrainer:
         self._add_metrics_update_callback(Phase.VALIDATION_BATCH_END)
 
         # ADD CALLBACK FOR QAT
-        self.enable_qat = core_utils.get_param(self.training_params, "enable_qat", False)
+        self.enable_qat = core_utils.get_param(
+            self.training_params, "enable_qat", False
+        )
         if self.enable_qat:
             raise NotImplementedError(
                 "QAT is not implemented as a plug-and-play feature yet. Please refer to examples/resnet_qat to learn how to do it manually."
@@ -944,9 +1085,18 @@ class EzTrainer:
             self._initialize_sg_logger_objects(additional_configs_to_log)
 
             if self.training_params.dataset_statistics:
-                dataset_statistics_logger = DatasetStatisticsTensorboardLogger(self.sg_logger)
-                dataset_statistics_logger.analyze(self.train_loader, all_classes=self.classes, title="Train-set", anchors=self.net.module.arch_params.anchors)
-                dataset_statistics_logger.analyze(self.valid_loader, all_classes=self.classes, title="val-set")
+                dataset_statistics_logger = DatasetStatisticsTensorboardLogger(
+                    self.sg_logger
+                )
+                dataset_statistics_logger.analyze(
+                    self.train_loader,
+                    all_classes=self.classes,
+                    title="Train-set",
+                    anchors=self.net.module.arch_params.anchors,
+                )
+                dataset_statistics_logger.analyze(
+                    self.valid_loader, all_classes=self.classes, title="val-set"
+                )
 
         sg_trainer_utils.log_uncaught_exceptions(logger)
 
@@ -957,40 +1107,58 @@ class EzTrainer:
             load_opt_params = False
 
         if isinstance(self.training_params.optimizer, str) or (
-            inspect.isclass(self.training_params.optimizer) and issubclass(self.training_params.optimizer, torch.optim.Optimizer)
+            inspect.isclass(self.training_params.optimizer)
+            and issubclass(self.training_params.optimizer, torch.optim.Optimizer)
         ):
-            self.optimizer = build_optimizer(net=self.net, lr=self.training_params.initial_lr, training_params=self.training_params)
+            self.optimizer = build_optimizer(
+                net=self.net,
+                lr=self.training_params.initial_lr,
+                training_params=self.training_params,
+            )
         elif isinstance(self.training_params.optimizer, torch.optim.Optimizer):
             self.optimizer = self.training_params.optimizer
         else:
             raise UnsupportedOptimizerFormat()
 
         # VERIFY GRADIENT CLIPPING VALUE
-        if self.training_params.clip_grad_norm is not None and self.training_params.clip_grad_norm <= 0:
+        if (
+            self.training_params.clip_grad_norm is not None
+            and self.training_params.clip_grad_norm <= 0
+        ):
             raise TypeError("Params", "Invalid clip_grad_norm")
 
         if self.load_checkpoint and load_opt_params:
             self.optimizer.load_state_dict(self.checkpoint["optimizer_state_dict"])
 
-        self.pre_prediction_callback = CallbacksFactory().get(self.training_params.pre_prediction_callback)
+        self.pre_prediction_callback = CallbacksFactory().get(
+            self.training_params.pre_prediction_callback
+        )
 
         self._initialize_mixed_precision(self.training_params.mixed_precision)
 
-        self._infinite_train_loader = (hasattr(self.train_loader, "sampler") and isinstance(self.train_loader.sampler, InfiniteSampler)) or (
-            hasattr(self.train_loader, "batch_sampler") and isinstance(self.train_loader.batch_sampler.sampler, InfiniteSampler)
+        self._infinite_train_loader = (
+            hasattr(self.train_loader, "sampler")
+            and isinstance(self.train_loader.sampler, InfiniteSampler)
+        ) or (
+            hasattr(self.train_loader, "batch_sampler")
+            and isinstance(self.train_loader.batch_sampler.sampler, InfiniteSampler)
         )
 
         self.ckpt_best_name = self.training_params.ckpt_best_name
 
         if self.training_params.max_train_batches is not None:
             if self.training_params.max_train_batches > len(self.train_loader):
-                logger.warning("max_train_batches is greater than len(self.train_loader) and will have no effect.")
+                logger.warning(
+                    "max_train_batches is greater than len(self.train_loader) and will have no effect."
+                )
             elif self.training_params.max_train_batches <= 0:
                 raise ValueError("max_train_batches must be positive.")
 
         if self.training_params.max_valid_batches is not None:
             if self.training_params.max_valid_batches > len(self.valid_loader):
-                logger.warning("max_valid_batches is greater than len(self.valid_loader) and will have no effect.")
+                logger.warning(
+                    "max_valid_batches is greater than len(self.valid_loader) and will have no effect."
+                )
             elif self.training_params.max_valid_batches <= 0:
                 raise ValueError("max_valid_batches must be positive.")
 
@@ -1017,7 +1185,6 @@ class EzTrainer:
             arch_params=self.arch_params,
             metric_to_watch=self.metric_to_watch,
             device=device_config.device,
-            context_methods=self._get_context_methods(Phase.PRE_TRAINING),
             ema_model=self.ema_model,
         )
         self.phase_callback_handler.on_training_start(context)
@@ -1030,16 +1197,24 @@ class EzTrainer:
             num_gpus=get_world_size(),
             batch_size=len(inputs),
             batch_accumulate=self.batch_accumulate,
-            len_train_set=len(self.train_loader.dataset),
+            train_dataset_length=len(self.train_loader.dataset),
+            train_dataloader_len=len(self.train_loader),
+            model=self.net,
+            param_groups=self.optimizer.param_groups,
         )
 
         try:
             # HEADERS OF THE TRAINING PROGRESS
             if not silent_mode:
-                logger.info(f"Started training for {self.max_epochs - self.start_epoch} epochs ({self.start_epoch}/" f"{self.max_epochs - 1})\n")
+                logger.info(
+                    f"Started training for {self.max_epochs - self.start_epoch} epochs ({self.start_epoch}/"
+                    f"{self.max_epochs - 1})\n"
+                )
             for epoch in range(self.start_epoch, self.max_epochs):
                 if context.stop_training:
-                    logger.info("Request to stop training has been received, stopping training")
+                    logger.info(
+                        "Request to stop training has been received, stopping training"
+                    )
                     break
 
                 # Phase.TRAIN_EPOCH_START
@@ -1056,11 +1231,17 @@ class EzTrainer:
                 ):
                     self.train_loader.sampler.set_epoch(epoch)
 
-                train_metrics_tuple = self._train_epoch(epoch=epoch, silent_mode=silent_mode)
+                train_metrics_tuple = self._train_epoch(
+                    epoch=epoch, silent_mode=silent_mode
+                )
 
                 # Phase.TRAIN_EPOCH_END
                 # RUN PHASE CALLBACKS
-                train_metrics_dict = get_metrics_dict(train_metrics_tuple, self.train_metrics, self.loss_logging_items_names)
+                train_metrics_dict = get_metrics_dict(
+                    train_metrics_tuple,
+                    self.train_metrics,
+                    self.loss_logging_items_names,
+                )
 
                 context.update_context(metrics_dict=train_metrics_dict)
                 self.phase_callback_handler.on_train_loader_end(context)
@@ -1068,7 +1249,10 @@ class EzTrainer:
                 # CALCULATE PRECISE BATCHNORM STATS
                 if self.precise_bn:
                     compute_precise_bn_stats(
-                        model=self.net, loader=self.train_loader, precise_bn_batch_size=self.precise_bn_batch_size, num_gpus=get_world_size()
+                        model=self.net,
+                        loader=self.train_loader,
+                        precise_bn_batch_size=self.precise_bn_batch_size,
+                        num_gpus=get_world_size(),
                     )
                     if self.ema:
                         compute_precise_bn_stats(
@@ -1089,12 +1273,18 @@ class EzTrainer:
                 if (epoch + 1) % self.run_validation_freq == 0:
                     self.phase_callback_handler.on_validation_loader_start(context)
                     timer.start()
-                    validation_results_tuple = self._validate_epoch(epoch=epoch, silent_mode=silent_mode)
+                    validation_results_tuple = self._validate_epoch(
+                        epoch=epoch, silent_mode=silent_mode
+                    )
                     inf_time = timer.stop()
 
                     # Phase.VALIDATION_EPOCH_END
                     # RUN PHASE CALLBACKS
-                    valid_metrics_dict = get_metrics_dict(validation_results_tuple, self.valid_metrics, self.loss_logging_items_names)
+                    valid_metrics_dict = get_metrics_dict(
+                        validation_results_tuple,
+                        self.valid_metrics,
+                        self.loss_logging_items_names,
+                    )
 
                     context.update_context(metrics_dict=valid_metrics_dict)
                     self.phase_callback_handler.on_validation_loader_end(context)
@@ -1104,7 +1294,13 @@ class EzTrainer:
 
                 if not self.ddp_silent_mode:
                     # SAVING AND LOGGING OCCURS ONLY IN THE MAIN PROCESS (IN CASES THERE ARE SEVERAL PROCESSES - DDP)
-                    self._write_to_disk_operations(train_metrics_tuple, validation_results_tuple, inf_time, epoch, context)
+                    self._write_to_disk_operations(
+                        train_metrics_tuple,
+                        validation_results_tuple,
+                        inf_time,
+                        epoch,
+                        context,
+                    )
                     self.sg_logger.upload()
 
             # Evaluating the average model and removing snapshot averaging file if training is completed
@@ -1121,7 +1317,10 @@ class EzTrainer:
         finally:
             if device_config.multi_gpu == MultiGPUMode.DISTRIBUTED_DATA_PARALLEL:
                 # CLEAN UP THE MULTI-GPU PROCESS GROUP WHEN DONE
-                if torch.distributed.is_initialized() and self.training_params.kill_ddp_pgroup_on_end:
+                if (
+                    torch.distributed.is_initialized()
+                    and self.training_params.kill_ddp_pgroup_on_end
+                ):
                     torch.distributed.destroy_process_group()
 
             # PHASE.TRAIN_END
@@ -1129,14 +1328,22 @@ class EzTrainer:
 
             if not self.ddp_silent_mode:
                 self.sg_logger.close()
-        if self.train_loader.num_workers > 0 and self.train_loader._iterator is not None:
+        if (
+            self.train_loader.num_workers > 0
+            and self.train_loader._iterator is not None
+        ):
             self.train_loader._iterator._shutdown_workers()
-        if self.valid_loader.num_workers > 0 and self.valid_loader._iterator is not None:
+        if (
+            self.valid_loader.num_workers > 0
+            and self.valid_loader._iterator is not None
+        ):
             self.valid_loader._iterator._shutdown_workers()
         self._restore_best_params()
 
     def _reset_best_metric(self):
-        self.best_metric = -1 * np.inf if self.greater_metric_to_watch_is_better else np.inf
+        self.best_metric = (
+            -1 * np.inf if self.greater_metric_to_watch_is_better else np.inf
+        )
 
     def _reset_metrics(self):
         for metric in ("train_metrics", "valid_metrics", "test_metrics"):
@@ -1149,9 +1356,13 @@ class EzTrainer:
 
         for metric_name, metric in self.train_metrics.items():
             if hasattr(metric, "greater_component_is_better"):
-                self.greater_train_metrics_is_better.update(metric.greater_component_is_better)
+                self.greater_train_metrics_is_better.update(
+                    metric.greater_component_is_better
+                )
             elif hasattr(metric, "greater_is_better"):
-                self.greater_train_metrics_is_better[metric_name] = metric.greater_is_better
+                self.greater_train_metrics_is_better[
+                    metric_name
+                ] = metric.greater_is_better
             else:
                 self.greater_train_metrics_is_better[metric_name] = None
 
@@ -1161,9 +1372,13 @@ class EzTrainer:
 
         for metric_name, metric in self.valid_metrics.items():
             if hasattr(metric, "greater_component_is_better"):
-                self.greater_valid_metrics_is_better.update(metric.greater_component_is_better)
+                self.greater_valid_metrics_is_better.update(
+                    metric.greater_component_is_better
+                )
             elif hasattr(metric, "greater_is_better"):
-                self.greater_valid_metrics_is_better[metric_name] = metric.greater_is_better
+                self.greater_valid_metrics_is_better[
+                    metric_name
+                ] = metric.greater_is_better
             else:
                 self.greater_valid_metrics_is_better[metric_name] = None
 
@@ -1176,7 +1391,9 @@ class EzTrainer:
         self.scaler = GradScaler(enabled=mixed_precision_enabled)
 
         if mixed_precision_enabled:
-            assert device_config.device.startswith("cuda"), "mixed precision is not available for CPU"
+            assert device_config.device.startswith(
+                "cuda"
+            ), "mixed precision is not available for CPU"
             if device_config.multi_gpu == MultiGPUMode.DATA_PARALLEL:
                 # IN DATAPARALLEL MODE WE NEED TO WRAP THE FORWARD FUNCTION OF OUR MODEL SO IT WILL RUN WITH AUTOCAST.
                 # BUT SINCE THE MODULE IS CLONED TO THE DEVICES ON EACH FORWARD CALL OF A DATAPARALLEL MODEL,
@@ -1187,9 +1404,14 @@ class EzTrainer:
                 self.net.module.register_forward_pre_hook(hook=hook)
 
             if self.load_checkpoint:
-                scaler_state_dict = core_utils.get_param(self.checkpoint, "scaler_state_dict")
+                scaler_state_dict = core_utils.get_param(
+                    self.checkpoint, "scaler_state_dict"
+                )
                 if scaler_state_dict is None:
-                    logger.warning("Mixed Precision - scaler state_dict not found in loaded model. This may case issues " "with loss scaling")
+                    logger.warning(
+                        "Mixed Precision - scaler state_dict not found in loaded model. This may case issues "
+                        "with loss scaling"
+                    )
                 else:
                     self.scaler.load_state_dict(scaler_state_dict)
 
@@ -1203,7 +1425,9 @@ class EzTrainer:
 
         keep_state_dict = deepcopy(self.net.state_dict())
         # SETTING STATE DICT TO THE AVERAGE MODEL FOR EVALUATION
-        average_model_ckpt_path = os.path.join(self.checkpoints_dir_path, self.average_model_checkpoint_filename)
+        average_model_ckpt_path = os.path.join(
+            self.checkpoints_dir_path, self.average_model_checkpoint_filename
+        )
         local_rank = get_local_rank()
 
         # WAIT FOR MASTER RANK TO SAVE THE CKPT BEFORE WE TRY TO READ IT.
@@ -1218,13 +1442,25 @@ class EzTrainer:
         self.net.load_state_dict(keep_state_dict)
 
         if not self.ddp_silent_mode:
-            average_model_tb_titles = ["Averaged Model " + x for x in self.results_titles[-1 * len(averaged_model_results_tuple) :]]
+            average_model_tb_titles = [
+                "Averaged Model " + x
+                for x in self.results_titles[-1 * len(averaged_model_results_tuple) :]
+            ]
             write_struct = ""
             for ind, title in enumerate(average_model_tb_titles):
-                write_struct += "%s: %.3f  \n  " % (title, averaged_model_results_tuple[ind])
-                self.sg_logger.add_scalar(title, averaged_model_results_tuple[ind], global_step=self.max_epochs)
+                write_struct += "%s: %.3f  \n  " % (
+                    title,
+                    averaged_model_results_tuple[ind],
+                )
+                self.sg_logger.add_scalar(
+                    title,
+                    averaged_model_results_tuple[ind],
+                    global_step=self.max_epochs,
+                )
 
-            self.sg_logger.add_text("Averaged_Model_Performance", write_struct, self.max_epochs)
+            self.sg_logger.add_text(
+                "Averaged_Model_Performance", write_struct, self.max_epochs
+            )
             if cleanup_snapshots_pkl_file:
                 self.model_weight_averaging.cleanup()
 
@@ -1251,13 +1487,18 @@ class EzTrainer:
         """
         if "num_classes" not in arch_params.keys():
             if self.dataset_interface is None:
-                raise Exception("Error", "Number of classes not defined in arch params and dataset is not defined")
+                raise Exception(
+                    "Error",
+                    "Number of classes not defined in arch params and dataset is not defined",
+                )
             else:
                 arch_params["num_classes"] = len(self.classes)
 
         self.arch_params = core_utils.HpmStruct(**arch_params)
         self.classes = self.arch_params.num_classes
-        self.net = self._instantiate_net(self.architecture, self.arch_params, self.checkpoint_params)
+        self.net = self._instantiate_net(
+            self.architecture, self.arch_params, self.checkpoint_params
+        )
         # save the architecture for neural architecture search
         if hasattr(self.net, "structure"):
             self.architecture = self.net.structure
@@ -1265,8 +1506,14 @@ class EzTrainer:
         self.net.to(device_config.device)
 
         if device_config.multi_gpu == MultiGPUMode.DISTRIBUTED_DATA_PARALLEL:
-            logger.warning("Warning: distributed training is not supported in re_build_model()")
-        self.net = torch.nn.DataParallel(self.net, device_ids=get_device_ids()) if device_config.multi_gpu else WrappedModel(self.net)
+            logger.warning(
+                "Warning: distributed training is not supported in re_build_model()"
+            )
+        self.net = (
+            torch.nn.DataParallel(self.net, device_ids=get_device_ids())
+            if device_config.multi_gpu
+            else WrappedModel(self.net)
+        )
 
     @property
     def get_module(self):
@@ -1308,36 +1555,6 @@ class EzTrainer:
         """
         self.ema = val
 
-    def _get_context_methods(self, phase: Phase) -> ContextSgMethods:
-        """
-        Returns ContextSgMethods holding the methods that should be accessible through phase callbacks to the user at
-         the specific phase
-
-        :param phase: Phase, controls what methods should be returned.
-        :return: ContextSgMethods holding methods from self.
-        """
-        if phase in [
-            Phase.PRE_TRAINING,
-            Phase.TRAIN_EPOCH_START,
-            Phase.TRAIN_EPOCH_END,
-            Phase.VALIDATION_EPOCH_END,
-            Phase.VALIDATION_EPOCH_END,
-            Phase.POST_TRAINING,
-            Phase.VALIDATION_END_BEST_EPOCH,
-        ]:
-            context_methods = ContextSgMethods(
-                get_net=self.get_net,
-                set_net=self.set_net,
-                set_ckpt_best_name=self.set_ckpt_best_name,
-                reset_best_metric=self._reset_best_metric,
-                validate_epoch=self._validate_epoch,
-                set_ema=self.set_ema,
-            )
-        else:
-            context_methods = ContextSgMethods()
-
-        return context_methods
-
     def _switch_device(self, new_device):
         device_config.device = new_device
         self.net.to(device_config.device)
@@ -1352,7 +1569,12 @@ class EzTrainer:
         # SET THE MODEL IN training STATE
         self.net.train()
         # THE DISABLE FLAG CONTROLS WHETHER THE PROGRESS BAR IS SILENT OR PRINTS THE LOGS
-        progress_bar_train_loader = tqdm(self.train_loader, bar_format="{l_bar}{bar:10}{r_bar}", dynamic_ncols=True, disable=silent_mode)
+        progress_bar_train_loader = tqdm(
+            self.train_loader,
+            bar_format="{l_bar}{bar:10}{r_bar}",
+            dynamic_ncols=True,
+            disable=silent_mode,
+        )
         progress_bar_train_loader.set_description(f"Train epoch {epoch}")
 
         # RESET/INIT THE METRIC LOGGERS
@@ -1371,18 +1593,30 @@ class EzTrainer:
             lr_warmup_epochs=self.training_params.lr_warmup_epochs,
             sg_logger=self.sg_logger,
             train_loader=self.train_loader,
-            context_methods=self._get_context_methods(Phase.TRAIN_BATCH_END),
             ddp_silent_mode=self.ddp_silent_mode,
         )
 
         for batch_idx, batch_items in enumerate(progress_bar_train_loader):
-            batch_items = core_utils.tensor_container_to_device(batch_items, device_config.device, non_blocking=True)
-            inputs, targets, additional_batch_items = sg_trainer_utils.unpack_batch_items(batch_items)
+            batch_items = core_utils.tensor_container_to_device(
+                batch_items, device_config.device, non_blocking=True
+            )
+            (
+                inputs,
+                targets,
+                additional_batch_items,
+            ) = sg_trainer_utils.unpack_batch_items(batch_items)
 
             if self.pre_prediction_callback is not None:
-                inputs, targets = self.pre_prediction_callback(inputs, targets, batch_idx)
+                inputs, targets = self.pre_prediction_callback(
+                    inputs, targets, batch_idx
+                )
 
-            context.update_context(batch_idx=batch_idx, inputs=inputs, target=targets, **additional_batch_items)
+            context.update_context(
+                batch_idx=batch_idx,
+                inputs=inputs,
+                target=targets,
+                **additional_batch_items,
+            )
             self.phase_callback_handler.on_train_batch_start(context)
 
             # AUTOCAST IS ENABLED ONLY IF self.training_params.mixed_precision - IF enabled=False AUTOCAST HAS NO EFFECT
@@ -1403,12 +1637,19 @@ class EzTrainer:
             self._backward_step(loss, epoch, batch_idx, context)
 
             # COMPUTE THE RUNNING USER METRICS AND LOSS RUNNING ITEMS. RESULT TUPLE IS THEIR CONCATENATION.
-            logging_values = loss_avg_meter.average + get_metrics_results_tuple(self.train_metrics)
-            gpu_memory_utilization = get_gpu_mem_utilization() / 1e9 if torch.cuda.is_available() else 0
+            logging_values = loss_avg_meter.average + get_metrics_results_tuple(
+                self.train_metrics
+            )
+            gpu_memory_utilization = (
+                get_gpu_mem_utilization() / 1e9 if torch.cuda.is_available() else 0
+            )
 
             # RENDER METRICS PROGRESS
             pbar_message_dict = get_train_loop_description_dict(
-                logging_values, self.train_metrics, self.loss_logging_items_names, gpu_mem=gpu_memory_utilization
+                logging_values,
+                self.train_metrics,
+                self.loss_logging_items_names,
+                gpu_mem=gpu_memory_utilization,
             )
 
             progress_bar_train_loader.set_postfix(**pbar_message_dict)
@@ -1416,27 +1657,43 @@ class EzTrainer:
 
             # TODO: ITERATE BY MAX ITERS
             # FOR INFINITE SAMPLERS WE MUST BREAK WHEN REACHING LEN ITERATIONS.
-            if (self._infinite_train_loader and batch_idx == len(self.train_loader) - 1) or (
-                self.max_train_batches is not None and self.max_train_batches - 1 <= batch_idx
+            if (
+                self._infinite_train_loader and batch_idx == len(self.train_loader) - 1
+            ) or (
+                self.max_train_batches is not None
+                and self.max_train_batches - 1 <= batch_idx
             ):
                 break
 
         self.train_monitored_values = sg_trainer_utils.update_monitored_values_dict(
-            monitored_values_dict=self.train_monitored_values, new_values_dict=pbar_message_dict
+            monitored_values_dict=self.train_monitored_values,
+            new_values_dict=pbar_message_dict,
         )
 
         return logging_values
-    
+
     def _forward_step(self, inputs, targets, additional_batch_items):
         if core_utils.get_param(self.training_params, "pass_targets_to_net", False):
-            if core_utils.get_param(self.training_params, "pass_additional_batch_items_to_net", False):
+            if core_utils.get_param(
+                self.training_params, "pass_additional_batch_items_to_net", False
+            ):
                 return self.net(inputs, targets, additional_batch_items)
             return self.net(inputs, targets)
-        if core_utils.get_param(self.training_params, "pass_additional_batch_items_to_net", False):
+        if core_utils.get_param(
+            self.training_params, "pass_additional_batch_items_to_net", False
+        ):
             return self.net(inputs, additional_batch_items)
         return self.net(inputs)
 
-    def _backward_step(self, loss: torch.Tensor, epoch: int, batch_idx: int, context: PhaseContext, *args, **kwargs):
+    def _backward_step(
+        self,
+        loss: torch.Tensor,
+        epoch: int,
+        batch_idx: int,
+        context: PhaseContext,
+        *args,
+        **kwargs,
+    ):
         """
         Run backprop on the loss and perform a step
         :param loss: The value computed by the loss function
@@ -1461,7 +1718,9 @@ class EzTrainer:
             # APPLY GRADIENT CLIPPING IF REQUIRED
             if self.training_params.clip_grad_norm:
                 self.scaler.unscale_(self.optimizer)
-                torch.nn.utils.clip_grad_norm_(self.net.parameters(), self.training_params.clip_grad_norm)
+                torch.nn.utils.clip_grad_norm_(
+                    self.net.parameters(), self.training_params.clip_grad_norm
+                )
 
             # SCALER IS ENABLED ONLY IF self.training_params.mixed_precision=True
             self.scaler.step(self.optimizer)
@@ -1469,14 +1728,20 @@ class EzTrainer:
 
             self.optimizer.zero_grad()
             if self.ema:
-                self.ema_model.update(self.net, step=global_step, total_steps=total_steps)
+                self.ema_model.update(
+                    self.net, step=global_step, total_steps=total_steps
+                )
 
             # RUN PHASE CALLBACKS
             self.phase_callback_handler.on_train_batch_gradient_step_end(context)
 
-    def _get_losses(self, outputs: torch.Tensor, targets: torch.Tensor, context) -> Tuple[torch.Tensor, tuple]:
+    def _get_losses(
+        self, outputs: torch.Tensor, targets: torch.Tensor, context
+    ) -> Tuple[torch.Tensor, tuple]:
         # GET THE OUTPUT OF THE LOSS FUNCTION
-        if self.validation and core_utils.get_param(self.training_params, "inform_loss_in_validaiton", False):
+        if self.validation and core_utils.get_param(
+            self.training_params, "inform_loss_in_validaiton", False
+        ):
             loss = self.criterion(outputs, targets, validation=self.validation)
         elif core_utils.get_param(self.training_params, "pass_context_to_loss", False):
             loss = self.criterion(outputs, targets, context)
@@ -1506,25 +1771,46 @@ class EzTrainer:
         return loss, loss_logging_items
 
     def _init_monitored_items(self):
-        if self.metric_to_watch == 'loss':
+        if self.metric_to_watch == "loss":
             if len(self.loss_logging_items_names) == 1:
                 self.metric_to_watch = self.loss_logging_items_names[0]
             else:
-                raise ValueError(f"Specify which loss {self.loss_logging_items_names} to watch")
-        self.metric_idx_in_results_tuple = fuzzy_idx_in_list(self.metric_to_watch, self.loss_logging_items_names + get_metrics_titles(self.valid_metrics))
+                raise ValueError(
+                    f"Specify which loss {self.loss_logging_items_names} to watch"
+                )
+        self.metric_idx_in_results_tuple = fuzzy_idx_in_list(
+            self.metric_to_watch,
+            self.loss_logging_items_names + get_metrics_titles(self.valid_metrics),
+        )
         # Instantiate the values to monitor (loss/metric)
         for loss_name in self.loss_logging_items_names:
-            self.train_monitored_values[loss_name] = MonitoredValue(name=loss_name, greater_is_better=False)
-            self.valid_monitored_values[loss_name] = MonitoredValue(name=loss_name, greater_is_better=False)
+            self.train_monitored_values[loss_name] = MonitoredValue(
+                name=loss_name, greater_is_better=False
+            )
+            self.valid_monitored_values[loss_name] = MonitoredValue(
+                name=loss_name, greater_is_better=False
+            )
 
         for metric_name in get_metrics_titles(self.train_metrics):
-            self.train_monitored_values[metric_name] = MonitoredValue(name=metric_name, greater_is_better=self.greater_train_metrics_is_better.get(metric_name))
+            self.train_monitored_values[metric_name] = MonitoredValue(
+                name=metric_name,
+                greater_is_better=self.greater_train_metrics_is_better.get(metric_name),
+            )
 
         for metric_name in get_metrics_titles(self.valid_metrics):
-            self.valid_monitored_values[metric_name] = MonitoredValue(name=metric_name, greater_is_better=self.greater_valid_metrics_is_better.get(metric_name))
+            self.valid_monitored_values[metric_name] = MonitoredValue(
+                name=metric_name,
+                greater_is_better=self.greater_valid_metrics_is_better.get(metric_name),
+            )
 
-        self.results_titles = ["Train_" + t for t in self.loss_logging_items_names + get_metrics_titles(self.train_metrics)] + [
-            "Valid_" + t for t in self.loss_logging_items_names + get_metrics_titles(self.valid_metrics)
+        self.results_titles = [
+            "Train_" + t
+            for t in self.loss_logging_items_names
+            + get_metrics_titles(self.train_metrics)
+        ] + [
+            "Valid_" + t
+            for t in self.loss_logging_items_names
+            + get_metrics_titles(self.valid_metrics)
         ]
 
         if self.training_params.average_best_models:
@@ -1546,7 +1832,10 @@ class EzTrainer:
             component_names = ["loss_" + str(i) for i in range(len(loss_logging_items))]
 
         if component_names is not None:
-            self.loss_logging_items_names = [criterion_name + "/" + component_name for component_name in component_names]
+            self.loss_logging_items_names = [
+                criterion_name + "/" + component_name
+                for component_name in component_names
+            ]
             if self.metric_to_watch in component_names:
                 self.metric_to_watch = criterion_name + "/" + self.metric_to_watch
         else:
@@ -1567,11 +1856,15 @@ class EzTrainer:
         self.valid_metrics.to(device_config.device)
 
         res = self.evaluate(
-            data_loader=self.valid_loader, metrics=self.valid_metrics, evaluation_type=EvaluationType.VALIDATION, epoch=epoch, silent_mode=silent_mode
+            data_loader=self.valid_loader,
+            metrics=self.valid_metrics,
+            evaluation_type=EvaluationType.VALIDATION,
+            epoch=epoch,
+            silent_mode=silent_mode,
         )
         self.validation = False
         return res
-    
+
     def evaluate(
         self,
         data_loader: torch.utils.data.DataLoader,
@@ -1597,11 +1890,18 @@ class EzTrainer:
         """
 
         # THE DISABLE FLAG CONTROLS WHETHER THE PROGRESS BAR IS SILENT OR PRINTS THE LOGS
-        progress_bar_data_loader = tqdm(data_loader, bar_format="{l_bar}{bar:10}{r_bar}", dynamic_ncols=True, disable=silent_mode)
+        progress_bar_data_loader = tqdm(
+            data_loader,
+            bar_format="{l_bar}{bar:10}{r_bar}",
+            dynamic_ncols=True,
+            disable=silent_mode,
+        )
         loss_avg_meter = core_utils.utils.AverageMeter()
         logging_values = None
         loss_tuple = None
-        lr_warmup_epochs = self.training_params.lr_warmup_epochs if self.training_params else None
+        lr_warmup_epochs = (
+            self.training_params.lr_warmup_epochs if self.training_params else None
+        )
         context = PhaseContext(
             epoch=epoch,
             metrics_compute_fn=metrics,
@@ -1610,21 +1910,35 @@ class EzTrainer:
             device=device_config.device,
             lr_warmup_epochs=lr_warmup_epochs,
             sg_logger=self.sg_logger,
-            context_methods=self._get_context_methods(Phase.VALIDATION_BATCH_END),
         )
 
         if not silent_mode:
             # PRINT TITLES
-            pbar_start_msg = f"Validation epoch {epoch}" if evaluation_type == EvaluationType.VALIDATION else "Test"
+            pbar_start_msg = (
+                f"Validation epoch {epoch}"
+                if evaluation_type == EvaluationType.VALIDATION
+                else "Test"
+            )
             progress_bar_data_loader.set_description(pbar_start_msg)
 
         with torch.no_grad():
             for batch_idx, batch_items in enumerate(progress_bar_data_loader):
-                batch_items = core_utils.tensor_container_to_device(batch_items, device_config.device, non_blocking=True)
-                inputs, targets, additional_batch_items = sg_trainer_utils.unpack_batch_items(batch_items)
+                batch_items = core_utils.tensor_container_to_device(
+                    batch_items, device_config.device, non_blocking=True
+                )
+                (
+                    inputs,
+                    targets,
+                    additional_batch_items,
+                ) = sg_trainer_utils.unpack_batch_items(batch_items)
 
                 # TRIGGER PHASE CALLBACKS CORRESPONDING TO THE EVALUATION TYPE
-                context.update_context(batch_idx=batch_idx, inputs=inputs, target=targets, **additional_batch_items)
+                context.update_context(
+                    batch_idx=batch_idx,
+                    inputs=inputs,
+                    target=targets,
+                    **additional_batch_items,
+                )
                 if evaluation_type == EvaluationType.VALIDATION:
                     self.phase_callback_handler.on_validation_batch_start(context)
                 else:
@@ -1647,19 +1961,29 @@ class EzTrainer:
                 # COMPUTE METRICS IF PROGRESS VERBOSITY IS SET
                 if metrics_progress_verbose and not silent_mode:
                     # COMPUTE THE RUNNING USER METRICS AND LOSS RUNNING ITEMS. RESULT TUPLE IS THEIR CONCATENATION.
-                    logging_values = get_logging_values(loss_avg_meter, metrics, self.criterion)
-                    pbar_message_dict = get_train_loop_description_dict(logging_values, metrics, self.loss_logging_items_names)
+                    logging_values = get_logging_values(
+                        loss_avg_meter, metrics, self.criterion
+                    )
+                    pbar_message_dict = get_train_loop_description_dict(
+                        logging_values, metrics, self.loss_logging_items_names
+                    )
 
                     progress_bar_data_loader.set_postfix(**pbar_message_dict)
 
-                if evaluation_type == EvaluationType.VALIDATION and self.max_valid_batches is not None and self.max_valid_batches - 1 <= batch_idx:
+                if (
+                    evaluation_type == EvaluationType.VALIDATION
+                    and self.max_valid_batches is not None
+                    and self.max_valid_batches - 1 <= batch_idx
+                ):
                     break
 
         # NEED TO COMPUTE METRICS FOR THE FIRST TIME IF PROGRESS VERBOSITY IS NOT SET
         if not metrics_progress_verbose:
             # COMPUTE THE RUNNING USER METRICS AND LOSS RUNNING ITEMS. RESULT TUPLE IS THEIR CONCATENATION.
             logging_values = get_logging_values(loss_avg_meter, metrics, self.criterion)
-            pbar_message_dict = get_train_loop_description_dict(logging_values, metrics, self.loss_logging_items_names)
+            pbar_message_dict = get_train_loop_description_dict(
+                logging_values, metrics, self.loss_logging_items_names
+            )
 
             progress_bar_data_loader.set_postfix(**pbar_message_dict)
 
@@ -1669,20 +1993,35 @@ class EzTrainer:
         #  COMPUTATION. ALSO REMOVE THE BELOW LINES BY IMPLEMENTING CRITERION AS A TORCHMETRIC.
 
         if device_config.multi_gpu == MultiGPUMode.DISTRIBUTED_DATA_PARALLEL:
-            logging_values = reduce_results_tuple_for_ddp(logging_values, next(self.net.parameters()).device)
+            logging_values = reduce_results_tuple_for_ddp(
+                logging_values, next(self.net.parameters()).device
+            )
 
-        pbar_message_dict = get_train_loop_description_dict(logging_values, metrics, self.loss_logging_items_names)
+        pbar_message_dict = get_train_loop_description_dict(
+            logging_values, metrics, self.loss_logging_items_names
+        )
 
         self.valid_monitored_values = sg_trainer_utils.update_monitored_values_dict(
-            monitored_values_dict=self.valid_monitored_values, new_values_dict=pbar_message_dict
+            monitored_values_dict=self.valid_monitored_values,
+            new_values_dict=pbar_message_dict,
         )
 
         if not silent_mode and evaluation_type == EvaluationType.VALIDATION:
-            progress_bar_data_loader.write("===========================================================")
-            sg_trainer_utils.display_epoch_summary(
-                epoch=context.epoch, n_digits=4, train_monitored_values=self.train_monitored_values, valid_monitored_values=self.valid_monitored_values
+            progress_bar_data_loader.write(
+                "==========================================================="
             )
-            progress_bar_data_loader.write("===========================================================")
+            sg_trainer_utils.display_epoch_summary(
+                epoch=context.epoch,
+                n_digits=4,
+                monitored_values_dict={
+                    "Train": self.train_monitored_values,
+                    "Validation": self.valid_monitored_values,
+                    "Test": self.test_monitored_values,
+                },
+            )
+            progress_bar_data_loader.write(
+                "==========================================================="
+            )
 
         return logging_values
 
@@ -1693,35 +2032,53 @@ class EzTrainer:
         self.net.to(device_config.device)
 
         # FOR MULTI-GPU TRAINING (not distributed)
-        sync_bn = core_utils.get_param(self.training_params, "sync_bn", default_val=False)
+        sync_bn = core_utils.get_param(
+            self.training_params, "sync_bn", default_val=False
+        )
         if device_config.multi_gpu == MultiGPUMode.DATA_PARALLEL:
             self.net = torch.nn.DataParallel(self.net, device_ids=get_device_ids())
         elif device_config.multi_gpu == MultiGPUMode.DISTRIBUTED_DATA_PARALLEL:
             if sync_bn:
                 if not self.ddp_silent_mode:
-                    logger.info("DDP - Using Sync Batch Norm... Training time will be affected accordingly")
-                self.net = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.net).to(device_config.device)
+                    logger.info(
+                        "DDP - Using Sync Batch Norm... Training time will be affected accordingly"
+                    )
+                self.net = torch.nn.SyncBatchNorm.convert_sync_batchnorm(self.net).to(
+                    device_config.device
+                )
 
             local_rank = int(device_config.device.split(":")[1])
-            self.net = torch.nn.parallel.DistributedDataParallel(self.net, device_ids=[local_rank], output_device=local_rank, find_unused_parameters=True)
+            self.net = torch.nn.parallel.DistributedDataParallel(
+                self.net,
+                device_ids=[local_rank],
+                output_device=local_rank,
+                find_unused_parameters=True,
+            )
 
         elif not isinstance(self.net, WrappedModel):
             self.net = WrappedModel(self.net)
         else:
             pass
-        
+
     def _restore_best_params(self):
         """
         Restore best parameters after the training
         """
-        self.checkpoint = load_checkpoint_to_model(ckpt_local_path=self.checkpoints_dir_path + '/ckpt_best.pth',
-                                                   load_backbone=False,
-                                                   net=self.net,
-                                                   strict=StrictLoad.ON.value,
-                                                   load_weights_only=True)
+        self.checkpoint = load_checkpoint_to_model(
+            ckpt_local_path=self.checkpoints_dir_path + "/ckpt_best.pth",
+            load_backbone=False,
+            net=self.net,
+            strict=StrictLoad.ON.value,
+            load_weights_only=True,
+        )
 
     def _prep_for_test(
-        self, test_loader: torch.utils.data.DataLoader = None, loss=None, test_metrics_list=None, loss_logging_items_names=None, test_phase_callbacks=None
+        self,
+        test_loader: torch.utils.data.DataLoader = None,
+        loss=None,
+        test_metrics_list=None,
+        loss_logging_items_names=None,
+        test_phase_callbacks=None,
     ):
         """Run commands that are common to all models"""
         # SET THE MODEL IN evaluation STATE
@@ -1730,7 +2087,9 @@ class EzTrainer:
         # IF SPECIFIED IN THE FUNCTION CALL - OVERRIDE THE self ARGUMENTS
         self.test_loader = test_loader or self.test_loader
         self.criterion = loss or self.criterion
-        self.loss_logging_items_names = loss_logging_items_names or self.loss_logging_items_names
+        self.loss_logging_items_names = (
+            loss_logging_items_names or self.loss_logging_items_names
+        )
         self.phase_callbacks = test_phase_callbacks or self.phase_callbacks
 
         if self.phase_callbacks is None:
@@ -1751,7 +2110,10 @@ class EzTrainer:
                 "calling test or through training_params when calling train(...)"
             )
         if self.test_loader is None:
-            raise ValueError("Test dataloader is required to perform test. Make sure to either pass it through " "test_loader arg.")
+            raise ValueError(
+                "Test dataloader is required to perform test. Make sure to either pass it through "
+                "test_loader arg."
+            )
 
         # RESET METRIC RUNNERS
         self._reset_metrics()
@@ -1761,13 +2123,17 @@ class EzTrainer:
             self._init_arch_params()
         self._net_to_device()
 
-    def test(self,  # noqa: C901
-             test_loader: torch.utils.data.DataLoader = None,
-             loss: torch.nn.modules.loss._Loss = None,
-             silent_mode: bool = False,
-             test_metrics: Mapping = None,
-             loss_logging_items_names=None, metrics_progress_verbose=False, test_phase_callbacks={},
-             use_ema_net=True) -> dict:
+    def test(
+        self,  # noqa: C901
+        test_loader: torch.utils.data.DataLoader = None,
+        loss: torch.nn.modules.loss._Loss = None,
+        silent_mode: bool = False,
+        test_metrics: Mapping = None,
+        loss_logging_items_names=None,
+        metrics_progress_verbose=False,
+        test_phase_callbacks={},
+        use_ema_net=True,
+    ) -> dict:
         """
         Evaluates the model on given dataloader and metrics.
 
@@ -1787,15 +2153,23 @@ class EzTrainer:
         self.validation = True
         if loss is not None:
             loss.to(self.device)
-        test_phase_callbacks = [callback_factory(name, params, seg_trainer=self, dataset=self.dataset_interface, loader=test_loader)
-                                for name, params in test_phase_callbacks.items()]
+        test_phase_callbacks = [
+            callback_factory(
+                name,
+                params,
+                seg_trainer=self,
+                dataset=self.dataset_interface,
+                loader=test_loader,
+            )
+            for name, params in test_phase_callbacks.items()
+        ]
 
-        test_metrics_list=list(test_metrics.values())
+        test_metrics_list = list(test_metrics.values())
 
         if use_ema_net and self.ema_model is not None:
             keep_model = self.net
             self.net = self.ema_model.ema
-        
+
         self._prep_for_test(
             test_loader=test_loader,
             loss=loss,
@@ -1808,8 +2182,7 @@ class EzTrainer:
             criterion=self.criterion,
             device=self.device,
             sg_logger=self.sg_logger,
-            context_methods=self._get_context_methods(Phase.TEST_BATCH_END),
-        )        
+        )
         if test_metrics_list:
             context.update_context(test_metrics=self.test_metrics)
 
@@ -1828,9 +2201,8 @@ class EzTrainer:
             self.net = keep_model
 
         self._first_backward = True
-        
-        self.validation = False
 
+        self.validation = False
 
         if self.test_loader.num_workers > 0:
             self.test_loader._iterator._shutdown_workers()
@@ -1838,10 +2210,12 @@ class EzTrainer:
         metric_names = get_metrics_titles(self.test_metrics)
         loss_names = self.loss_logging_items_names
         if len(loss_names) + len(metric_names) != len(metrics_values):
-            raise ValueError(f'Number of loss names ({len(loss_names)}) + number of metric names ({len(metric_names)}) '
-                             f'!= number of metrics values ({len(metrics_values)})')
-        losses = dict(zip(loss_names, metrics_values[:len(loss_names)]))
-        metrics = dict(zip(metric_names, metrics_values[len(loss_names):]))
+            raise ValueError(
+                f"Number of loss names ({len(loss_names)}) + number of metric names ({len(metric_names)}) "
+                f"!= number of metrics values ({len(metrics_values)})"
+            )
+        losses = dict(zip(loss_names, metrics_values[: len(loss_names)]))
+        metrics = dict(zip(metric_names, metrics_values[len(loss_names) :]))
         metrics = {**losses, **metrics}
 
         conf_mat_name = "conf_mat"
@@ -1849,16 +2223,18 @@ class EzTrainer:
             for element in test_metrics[conf_mat_name].component_names:
                 metrics.pop(element)
             conf_mat = test_metrics[conf_mat_name].get_cf()
-            logger.info(f'Confusion matrix:\n{conf_mat}')
-            self.sg_logger.add_table('confusion_matrix', conf_mat.cpu(),
-                                     columns=list(self.dataset_interface.testset.id2label.values()),
-                                     rows=list(self.dataset_interface.testset.id2label.values())
-                                     )
+            logger.info(f"Confusion matrix:\n{conf_mat}")
+            self.sg_logger.add_table(
+                "confusion_matrix",
+                conf_mat.cpu(),
+                columns=list(self.dataset_interface.testset.id2label.values()),
+                rows=list(self.dataset_interface.testset.id2label.values()),
+            )
         self.sg_logger.add_summary(metrics)
-        logger.info(f'Test metrics: {pformat(metrics)}')
-        if 'auc' in metrics:
-            logger.info('Computing ROC curve...')
-            roc = test_metrics['auc'].get_roc()
+        logger.info(f"Test metrics: {pformat(metrics)}")
+        if "auc" in metrics:
+            logger.info("Computing ROC curve...")
+            roc = test_metrics["auc"].get_roc()
             fpr_tpr = [(roc[0][i], roc[1][i]) for i in range(len(roc))]
             skip = [x[0].shape.numel() // 1000 for x in fpr_tpr]
             fpr_tpr = [(fpr[::sk], tpr[::sk]) for (fpr, tpr), sk in zip(fpr_tpr, skip)]
@@ -1866,78 +2242,99 @@ class EzTrainer:
             fprs = torch.cat(fprs)
             tprs = torch.cat(tprs)
             classes = list(self.dataset_interface.testset.id2label.values())
-            cls = [[classes[i]] * len(fpr)
-                   for i, (fpr, tpr) in enumerate(fpr_tpr)]
+            cls = [[classes[i]] * len(fpr) for i, (fpr, tpr) in enumerate(fpr_tpr)]
             cls = [item for sublist in cls for item in sublist]
-            df = pd.DataFrame({'class': cls, 'fpr': fprs, 'tpr': tprs})
+            df = pd.DataFrame({"class": cls, "fpr": fprs, "tpr": tprs})
             name = "ROCAUC"
             self.sg_logger.add_plot(name, df, "fpr", "tpr", classes_marker="class")
-            logger.info('ROC curve computed.')
+            logger.info("ROC curve computed.")
         return metrics
 
-    def _initialize_sg_logger_objects(self, logger_run=None, additional_configs_to_log: Dict = None):
+    def _initialize_sg_logger_objects(
+        self, logger_run=None, additional_configs_to_log: Dict = None
+    ):
         if not self.train_initialized:
             self.train_initialized = True
             # OVERRIDE SOME PARAMETERS TO MAKE SURE THEY MATCH THE TRAINING PARAMETERS
             general_sg_logger_params = {  # 'experiment_name': self.experiment_name,
-                'experiment_name': '',
-                'project_name': self.project_name,
-                'group': self.group_name,
-                'storage_location': self.model_checkpoints_location,
-                'resumed': self.load_checkpoint,
-                'training_params': self.training_params,
-                'checkpoints_dir_path': self.checkpoints_dir_path,
-                'run_id': self.run_id,
-                'run': logger_run,
+                "experiment_name": "",
+                "project_name": self.project_name,
+                "group": self.group_name,
+                "storage_location": self.model_checkpoints_location,
+                "resumed": self.load_checkpoint,
+                "training_params": self.training_params,
+                "checkpoints_dir_path": self.checkpoints_dir_path,
+                "run_id": self.run_id,
+                "run": logger_run,
             }
-            sg_logger = core_utils.get_param(self.training_params, 'sg_logger')
+            sg_logger = core_utils.get_param(self.training_params, "sg_logger")
 
             if sg_logger is None:
-                raise RuntimeError('logger must be defined in experiment params (see default_training_params)')
+                raise RuntimeError(
+                    "logger must be defined in experiment params (see default_training_params)"
+                )
 
             if isinstance(sg_logger, AbstractSGLogger):
                 self.sg_logger = sg_logger
             elif isinstance(sg_logger, str):
-                sg_logger_params = {**general_sg_logger_params,
-                                    **core_utils.get_param(self.training_params, 'sg_logger_params', {})}
+                sg_logger_params = {
+                    **general_sg_logger_params,
+                    **core_utils.get_param(
+                        self.training_params, "sg_logger_params", {}
+                    ),
+                }
                 if sg_logger in SG_LOGGERS:
                     self.sg_logger = SG_LOGGERS[sg_logger](**sg_logger_params)
                 elif sg_logger in LOGGERS:
                     self.sg_logger = LOGGERS[sg_logger](**sg_logger_params)
                 else:
-                    raise RuntimeError('sg_logger not defined in SG_LOGGERS of SuperGradients neither in LOGGERS of '
-                                       'EzDL')
+                    raise RuntimeError(
+                        "sg_logger not defined in SG_LOGGERS of SuperGradients neither in LOGGERS of "
+                        "EzDL"
+                    )
             else:
-                raise RuntimeError('sg_logger can be either an sg_logger name (str) or a subcalss of AbstractSGLogger')
+                raise RuntimeError(
+                    "sg_logger can be either an sg_logger name (str) or a subcalss of AbstractSGLogger"
+                )
 
-            if not (isinstance(self.sg_logger, BaseSGLogger) or isinstance(self.sg_logger, BaseLogger)):
+            if not (
+                isinstance(self.sg_logger, BaseSGLogger)
+                or isinstance(self.sg_logger, BaseLogger)
+            ):
                 logger.warning(
                     "WARNING! Using a user-defined sg_logger: files will not be automatically written to disk!\n"
-                    "Please make sure the provided sg_logger writes to disk or compose your sg_logger to BaseSGLogger")
+                    "Please make sure the provided sg_logger writes to disk or compose your sg_logger to BaseSGLogger"
+                )
 
             # IN CASE SG_LOGGER UPDATED THE DIR PATH
             self.checkpoints_dir_path = self.sg_logger.local_dir()
             self.training_params.override(sg_logger=sg_logger)
-            additional_log_items = {'num_devices': self.num_devices,
-                                    'multi_gpu': str(self.multi_gpu),
-                                    'device_type': torch.cuda.get_device_name(
-                                        0) if torch.cuda.is_available() else 'cpu'}
+            additional_log_items = {
+                "num_devices": self.num_devices,
+                "multi_gpu": str(self.multi_gpu),
+                "device_type": torch.cuda.get_device_name(0)
+                if torch.cuda.is_available()
+                else "cpu",
+            }
 
             # ADD INSTALLED PACKAGE LIST + THEIR VERSIONS
             if self.training_params.log_installed_packages:
-                pkg_list = list(map(lambda pkg: str(pkg), _get_installed_distributions()))
-                additional_log_items['installed_packages'] = pkg_list
+                pkg_list = list(
+                    map(lambda pkg: str(pkg), _get_installed_distributions())
+                )
+                additional_log_items["installed_packages"] = pkg_list
 
             self.sg_logger.add_config("additional_log_items", additional_log_items)
             self.sg_logger.flush()
 
-    def init_loggers(self,
-                     in_params: Mapping = None,
-                     train_params: Mapping = None,
-                     init_sg_loggers: bool = True,
-                     run_id=None,
-                     logger_run=None) -> None:
-
+    def init_loggers(
+        self,
+        in_params: Mapping = None,
+        train_params: Mapping = None,
+        init_sg_loggers: bool = True,
+        run_id=None,
+        logger_run=None,
+    ) -> None:
         self.run_id = run_id
         if self.training_params is None:
             self.training_params = TrainingParams()
@@ -1957,7 +2354,9 @@ class EzTrainer:
             "initial_LR": self.training_params.initial_lr,
             "num_devices": get_world_size(),
             "multi_gpu": str(device_config.multi_gpu),
-            "device_type": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "cpu",
+            "device_type": torch.cuda.get_device_name(0)
+            if torch.cuda.is_available()
+            else "cpu",
         }
         # ADD INSTALLED PACKAGE LIST + THEIR VERSIONS
         if self.training_params.log_installed_packages:
@@ -1972,14 +2371,24 @@ class EzTrainer:
         }
         return hyper_param_config
 
-    def _save_checkpoint(self, optimizer=None, epoch: int = None, validation_results_tuple: tuple = None, context: PhaseContext = None):
+    def _save_checkpoint(
+        self,
+        optimizer=None,
+        epoch: int = None,
+        validation_results_tuple: tuple = None,
+        context: PhaseContext = None,
+    ):
         """
         Save the current state dict as latest (always), best (if metric was improved), epoch# (if determined in training
         params)
         """
         # WHEN THE validation_results_tuple IS NONE WE SIMPLY SAVE THE state_dict AS LATEST AND Return
         if validation_results_tuple is None:
-            self.sg_logger.add_checkpoint(tag="ckpt_latest_weights_only.pth", state_dict={"net": self.net.state_dict()}, global_step=epoch)
+            self.sg_logger.add_checkpoint(
+                tag="ckpt_latest_weights_only.pth",
+                state_dict={"net": self.net.state_dict()},
+                global_step=epoch,
+            )
             return
 
         # COMPUTE THE CURRENT metric
@@ -1987,7 +2396,12 @@ class EzTrainer:
         metric = (
             validation_results_tuple[self.metric_idx_in_results_tuple]
             if isinstance(self.metric_idx_in_results_tuple, int)
-            else sum([validation_results_tuple[idx] for idx in self.metric_idx_in_results_tuple])
+            else sum(
+                [
+                    validation_results_tuple[idx]
+                    for idx in self.metric_idx_in_results_tuple
+                ]
+            )
         )
 
         # BUILD THE state_dict
@@ -2001,14 +2415,20 @@ class EzTrainer:
         if self.ema:
             state["ema_net"] = self.ema_model.ema.state_dict()
         # SAVES CURRENT MODEL AS ckpt_latest
-        self.sg_logger.add_checkpoint(tag="ckpt_latest.pth", state_dict=state, global_step=epoch)
+        self.sg_logger.add_checkpoint(
+            tag="ckpt_latest.pth", state_dict=state, global_step=epoch
+        )
 
         # SAVE MODEL AT SPECIFIC EPOCHS DETERMINED BY save_ckpt_epoch_list
         if epoch in self.training_params.save_ckpt_epoch_list:
-            self.sg_logger.add_checkpoint(tag=f"ckpt_epoch_{epoch}.pth", state_dict=state, global_step=epoch)
+            self.sg_logger.add_checkpoint(
+                tag=f"ckpt_epoch_{epoch}.pth", state_dict=state, global_step=epoch
+            )
 
         # OVERRIDE THE BEST CHECKPOINT AND best_metric IF metric GOT BETTER THAN THE PREVIOUS BEST
-        if (metric > self.best_metric and self.greater_metric_to_watch_is_better) or (metric < self.best_metric and not self.greater_metric_to_watch_is_better):
+        if (metric > self.best_metric and self.greater_metric_to_watch_is_better) or (
+            metric < self.best_metric and not self.greater_metric_to_watch_is_better
+        ):
             # STORE THE CURRENT metric AS BEST
             self.best_metric = metric
             self._save_best_checkpoint(epoch, state)
@@ -2018,12 +2438,23 @@ class EzTrainer:
 
             if isinstance(metric, torch.Tensor):
                 metric = metric.item()
-            logger.info("Best checkpoint overriden: validation " + self.metric_to_watch + ": " + str(metric))
+            logger.info(
+                "Best checkpoint overriden: validation "
+                + self.metric_to_watch
+                + ": "
+                + str(metric)
+            )
 
         if self.training_params.average_best_models:
             net_for_averaging = self.ema_model.ema if self.ema else self.net
-            state["net"] = self.model_weight_averaging.get_average_model(net_for_averaging, validation_results_tuple=validation_results_tuple)
-            self.sg_logger.add_checkpoint(tag=self.average_model_checkpoint_filename, state_dict=state, global_step=epoch)
+            state["net"] = self.model_weight_averaging.get_average_model(
+                net_for_averaging, validation_results_tuple=validation_results_tuple
+            )
+            self.sg_logger.add_checkpoint(
+                tag=self.average_model_checkpoint_filename,
+                state_dict=state,
+                global_step=epoch,
+            )
 
     def _save_best_checkpoint(self, epoch, state):
         if self.ema:
@@ -2033,44 +2464,80 @@ class EzTrainer:
             best_net = self.net
 
         state["net"] = best_net.state_dict()
-        self.sg_logger.add_checkpoint(tag=self.ckpt_best_name, state_dict=state, global_step=epoch)
+        self.sg_logger.add_checkpoint(
+            tag=self.ckpt_best_name, state_dict=state, global_step=epoch
+        )
 
-    def _write_to_disk_operations(self, train_metrics: tuple, validation_results: tuple, inf_time: float, epoch: int, context: PhaseContext):
+    def _write_to_disk_operations(
+        self,
+        train_metrics: tuple,
+        validation_results: tuple,
+        inf_time: float,
+        epoch: int,
+        context: PhaseContext,
+    ):
         """Run the various logging operations, e.g.: log file, Tensorboard, save checkpoint etc."""
         # STORE VALUES IN A TENSORBOARD FILE
         valid_name = "Valid_"
         train_name = "Train_"
         all_titles = self.results_titles + ["Inference Time"]
-        if (epoch + 1) % self.run_validation_freq == 0: # Remove validation metrics if not validating in this epoch
+        if (
+            epoch + 1
+        ) % self.run_validation_freq == 0:  # Remove validation metrics if not validating in this epoch
             train_results = list(train_metrics) + list(validation_results) + [inf_time]
         else:
-            all_titles = list(filter(lambda x: x[:len(valid_name)] != valid_name, all_titles))
+            all_titles = list(
+                filter(lambda x: x[: len(valid_name)] != valid_name, all_titles)
+            )
             train_results = list(train_metrics) + [inf_time]
 
-        result_dict = {all_titles[i]: train_results[i] for i in range(len(train_results))}
+        result_dict = {
+            all_titles[i]: train_results[i] for i in range(len(train_results))
+        }
 
         valids = get_metric_titles_components_mapping(self.valid_metrics)
         valids = {valid_name + k: valid_name + v for k, v in valids.items()}
         trains = get_metric_titles_components_mapping(self.train_metrics)
         trains = {train_name + k: train_name + v for k, v in trains.items()}
-        losses = {log_item: 'loss' for log_item in self.loss_logging_items_names}
+        losses = {log_item: "loss" for log_item in self.loss_logging_items_names}
         train_losses = {train_name + k: train_name + v for k, v in losses.items()}
         valid_losses = {valid_name + k: valid_name + v for k, v in losses.items()}
-        series_dict = {**trains, **valids, **train_losses, **valid_losses, 'Inference Time': "Inference Time"}
-        
+        series_dict = {
+            **trains,
+            **valids,
+            **train_losses,
+            **valid_losses,
+            "Inference Time": "Inference Time",
+        }
+
         push_dict = {}
         for key in result_dict.keys() & series_dict.keys():
-            push_dict[key] = {'value': result_dict[key], 'series': series_dict[key]}
-        
+            push_dict[key] = {"value": result_dict[key], "series": series_dict[key]}
+
         self.sg_logger.add_scalars(tag_scalar_dict=push_dict, global_step=epoch)
 
         # SAVE THE CHECKPOINT
-        if self.training_params.save_model and (epoch + 1) % self.run_validation_freq == 0:
-            self._save_checkpoint(self.optimizer, epoch + 1, validation_results, context)
+        if (
+            self.training_params.save_model
+            and (epoch + 1) % self.run_validation_freq == 0
+        ):
+            self._save_checkpoint(
+                self.optimizer, epoch + 1, validation_results, context
+            )
 
     def _write_lrs(self, epoch):
-        lrs = [self.optimizer.param_groups[i]["lr"] for i in range(len(self.optimizer.param_groups))]
-        lr_titles = ["LR/Param_group_" + str(i) for i in range(len(self.optimizer.param_groups))] if len(self.optimizer.param_groups) > 1 else ["LR"]
+        lrs = [
+            self.optimizer.param_groups[i]["lr"]
+            for i in range(len(self.optimizer.param_groups))
+        ]
+        lr_titles = (
+            [
+                "LR/Param_group_" + str(i)
+                for i in range(len(self.optimizer.param_groups))
+            ]
+            if len(self.optimizer.param_groups) > 1
+            else ["LR"]
+        )
         lr_dict = {lr_titles[i]: lrs[i] for i in range(len(lrs))}
         self.sg_logger.add_scalars(tag_scalar_dict=lr_dict, global_step=epoch)
 
@@ -2085,11 +2552,15 @@ class EzTrainer:
         # THE DISABLE FLAG CONTROLS WHETHER THE PROGRESS BAR IS SILENT OR PRINTS THE LOGS
         if callbacks is None:
             callbacks = []
-        progress_bar_data_loader = tqdm(data_loader, bar_format="{l_bar}{bar:10}{r_bar}", dynamic_ncols=True,
-                                        disable=silent_mode)
-        context = PhaseContext(criterion=self.criterion,
-                               device=self.device,
-                               sg_logger=self.sg_logger)
+        progress_bar_data_loader = tqdm(
+            data_loader,
+            bar_format="{l_bar}{bar:10}{r_bar}",
+            dynamic_ncols=True,
+            disable=silent_mode,
+        )
+        context = PhaseContext(
+            criterion=self.criterion, device=self.device, sg_logger=self.sg_logger
+        )
 
         self.phase_callbacks.extend(callbacks)
 
@@ -2100,27 +2571,33 @@ class EzTrainer:
 
         with torch.no_grad():
             for batch_idx, batch_items in enumerate(progress_bar_data_loader):
-                batch_items = core_utils.tensor_container_to_device(batch_items, self.device, non_blocking=True)
+                batch_items = core_utils.tensor_container_to_device(
+                    batch_items, self.device, non_blocking=True
+                )
 
                 additional_batch_items = {}
                 targets = None
-                if hasattr(batch_items, '__len__'):
+                if hasattr(batch_items, "__len__"):
                     if len(batch_items) == 2:
                         inputs, targets = batch_items
                     elif len(batch_items) == 3:
                         inputs, targets, additional_batch_items = batch_items
                     else:
-                        raise ValueError(f"Expected 1, 2 or 3 items in batch_items, got {len(batch_items)}")
+                        raise ValueError(
+                            f"Expected 1, 2 or 3 items in batch_items, got {len(batch_items)}"
+                        )
                 else:
                     inputs = batch_items
 
                 output = self.net(inputs)
 
-                context.update_context(batch_idx=batch_idx,
-                                       inputs=inputs,
-                                       preds=output,
-                                       target=targets,
-                                       **additional_batch_items)
+                context.update_context(
+                    batch_idx=batch_idx,
+                    inputs=inputs,
+                    preds=output,
+                    target=targets,
+                    **additional_batch_items,
+                )
 
                 # TRIGGER PHASE CALLBACKS
                 self.phase_callback_handler(Phase.POST_TRAINING, context)
